@@ -7,6 +7,7 @@ use App\Http\Controllers\KonveksiController;
 use App\Http\Controllers\MotifController;
 use App\Http\Controllers\ProductionController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\UserMotifController;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -15,11 +16,18 @@ use Illuminate\Support\Facades\Auth;
 
 // Route halaman utama (welcome) - hanya untuk guest
 Route::get('/', function () {
-    return Inertia::render('Auth/Login');
+    if (!Auth::check()) {
+        return Inertia::render('Auth/Login');
+    }
+
+    return match (Auth::user()->role) {
+        'Convection' => redirect()->route('konveksi.dashboard'),
+        default      => redirect()->route('dashboard'),
+    };
 });
 
 // Routes yang memerlukan autentikasi
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function () {
     // Dashboard utama - menampilkan desain user
     Route::get('/dashboard', [DesignController::class, 'index'])->name('dashboard');
 
@@ -32,46 +40,38 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Motif routes
     Route::get('/motif', [MotifController::class, 'index'])->name('motif');
     Route::get('/api/motifs/editor', [MotifController::class, 'getForEditor'])->name('motifs.editor');
+    Route::get('/api/user-motifs', [UserMotifController::class, 'index'])->name('motifs.user.index');
+    Route::post('/api/user-motifs', [UserMotifController::class, 'store'])->name('motifs.user.store');
     Route::post('/motifs/ai', [MotifController::class, 'storeFromAi'])->name('motifs.store.ai');
     Route::post('/designs/ai', [DesignController::class, 'storeFromAi'])->name('designs.store.ai');
 
     // Menu utama
-    Route::get('/konveksi', function () {
-        return Inertia::render('User/Konveksi');
-    })->name('konveksi');
-    Route::get('/bantuan', function () {
-        return Inertia::render('User/Bantuan');
-    })->name('bantuan');
+    Route::get('/konveksi', [KonveksiController::class, 'index'])->name('konveksi.index');
+    Route::get('/konveksi/{konveksi}', [KonveksiController::class, 'show'])->name('konveksi.show');
 
-    // Editor routes
+    Route::get('/bantuan', fn () => Inertia::render('User/Bantuan'))->name('bantuan');
     Route::get('/editor', [DesignEditorController::class, 'create'])->name('editor.create');
-
-    // Batik Generator
-    Route::get('/batik-generator', function () {
-        return Inertia::render('BatikGeneratorPage');
-    })->name('batik.generator');
-
+    Route::get('/batik-generator', fn () => Inertia::render('BatikGeneratorPage'))->name('batik.generator');
     Route::get('/produksi', [ProductionController::class, 'index'])->name('production.index');
     Route::post('/produksi', [ProductionController::class, 'store'])->name('production.store');
     Route::get('/produksi/pesan', [ProductionController::class, 'create'])->name('production.create');
-    Route::get('/konveksi', [KonveksiController::class, 'index'])->name('konveksi.index');
-    Route::get('/konveksi/{konveksi}', [KonveksiController::class, 'show'])->name('konveksi.show');    
-    // Profile routes
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-// Konveksi routes (untuk detail dan show)
-Route::get('/konveksi', [KonveksiController::class, 'index'])->name('konveksi.index');
-Route::get('/konveksi/{konveksi}', [KonveksiController::class, 'show'])->name('konveksi.show');
+Route::middleware(['auth', 'verified', 'role:Convection,Admin'])->group(function () {
+    Route::get('/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])
+        ->name('konveksi.dashboard');
 
-// Konveksi dashboard khusus (role:Convection,Admin)
-Route::middleware(['auth', 'role:Convection,Admin'])->prefix('konveksi.')->name('konveksi.')->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])->name('dashboard');
-    Route::get('/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])->name('orders');
-    Route::get('/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])->name('customers');
-    Route::get('/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])->name('income');
+    Route::get('/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])
+        ->name('konveksi.orders');
+
+    Route::get('/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])
+        ->name('konveksi.customers');
+
+    Route::get('/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])
+        ->name('konveksi.income');
 });
 
 // Admin routes

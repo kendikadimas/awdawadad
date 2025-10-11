@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Konveksi;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,7 +51,19 @@ class RegisteredUserController extends Controller
         Auth::login($user);
 
         if ($user->role === 'Convection') {
-            return redirect(route('konveksi.dashboard'));
+            Konveksi::firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'name' => $user->name,
+                    'description' => 'Belum ada deskripsi.',
+                    'location' => 'Belum diatur',
+                    'no_telp' => '-',
+                    'rating' => 0,
+                    'is_verified' => false,
+                ]
+            );
+
+            return redirect()->route('konveksi.dashboard');
         }
 
         return redirect(route('dashboard'));

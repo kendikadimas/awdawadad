@@ -14,7 +14,17 @@ class DesignController extends Controller
     {
         $designs = Auth::user()->designs()
             ->orderBy('updated_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($design) {
+                if (is_string($design->canvas_data)) {
+                    $design->canvas_data = json_decode($design->canvas_data, true);
+                }
+                $design->image_url = $design->image_url
+                    ? Storage::url($design->image_url)
+                    : null;
+
+                return $design;
+            });
 
         return Inertia::render('User/Dashboard', [
             'designs' => $designs
@@ -38,9 +48,9 @@ class DesignController extends Controller
             $thumbnailData = substr($request->thumbnail, strpos($request->thumbnail, ',') + 1);
             $thumbnailData = base64_decode($thumbnailData);
             $filename = 'designs/thumbnails/' . Auth::id() . '_' . time() . '.jpg';
-            
+
             Storage::disk('public')->put($filename, $thumbnailData);
-            $thumbnailPath = Storage::url($filename);
+            $thumbnailPath = $filename;
         }
 
         $design = Design::create([
@@ -80,9 +90,8 @@ class DesignController extends Controller
 
         // Update thumbnail jika ada
         if ($request->has('thumbnail') && $request->thumbnail) {
-            // Hapus thumbnail lama jika ada
             if ($design->image_url) {
-                Storage::disk('public')->delete(str_replace('/storage/', '', $design->image_url));
+                Storage::disk('public')->delete($design->image_url);
             }
 
             $thumbnailData = substr($request->thumbnail, strpos($request->thumbnail, ',') + 1);
@@ -90,7 +99,7 @@ class DesignController extends Controller
             $filename = 'designs/thumbnails/' . Auth::id() . '_' . time() . '.jpg';
             
             Storage::disk('public')->put($filename, $thumbnailData);
-            $thumbnailPath = Storage::url($filename);
+            $thumbnailPath = $filename;
         }
 
         $design->update([
@@ -134,7 +143,7 @@ class DesignController extends Controller
         $imageData = base64_decode($imageData);
         $filename = 'designs/generated/' . Auth::id() . '_' . time() . '.jpg';
         Storage::disk('public')->put($filename, $imageData);
-        $imageUrl = asset(Storage::url($filename));
+        $imageUrl = Storage::url($filename);
 
         // Buat struktur data canvas dengan gambar AI di tengah
         $canvasData = [
@@ -152,7 +161,7 @@ class DesignController extends Controller
         $design = Design::create([
             'title' => $request->title,
             'canvas_data' => $canvasData,
-            'image_url' => $imageUrl, // Gunakan gambar AI juga sebagai thumbnail
+            'image_url' => $filename, // Gunakan gambar AI juga sebagai thumbnail
             'user_id' => Auth::id(),
         ]);
 

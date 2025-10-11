@@ -1,14 +1,14 @@
-import React, { Suspense, useRef, useEffect } from 'react';
+import React, { Suspense, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { CameraControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Daftar model yang tersedia
 const MODEL_LIST = [
-    { label: 'Kemeja', value: 'kemeja', file: '/models/white_shirt.glb' },
-    { label: 'Kaos', value: 'kaos', file: '/models/kaos.glb' },
-    { label: 'Polo', value: 'polo', file: '/models/polo.glb' },
-    { label: 'Dress', value: 'dress', file: '/models/dress.glb' },
+    { label: 'Kemeja', value: 'kemeja', file: '/models/white_shirt.glb', textureRepeat: [3, 3] },
+    { label: 'Kaos', value: 'kaos', file: '/models/kaos.glb', textureRepeat: [2.5, 2.5] },
+    { label: 'Polo', value: 'polo', file: '/models/polo.glb', textureRepeat: [3, 3] },
+    { label: 'Dress', value: 'dress', file: '/models/dress.glb', textureRepeat: [4, 4] },
     // Tambahkan model lain di sini
 ];
 
@@ -16,20 +16,44 @@ const MODEL_LIST = [
 function Model({ patternUrl, cameraControlsRef, modelFile }) {
     const { nodes } = useGLTF(modelFile);
     const groupRef = useRef();
+    const textureNeedsUpdate = useRef(true);
+    const [highResPattern, setHighResPattern] = React.useState(patternUrl);
 
-    const patternTexture = useLoader(THREE.TextureLoader, patternUrl);
-    patternTexture.wrapS = THREE.RepeatWrapping;
-    patternTexture.wrapT = THREE.RepeatWrapping;
-    patternTexture.repeat.set(6, 6);
-    patternTexture.flipY = false;
+    const patternTexture = useLoader(THREE.TextureLoader, highResPattern);
+
+    patternTexture.wrapS = THREE.ClampToEdgeWrapping;
+    patternTexture.wrapT = THREE.ClampToEdgeWrapping;
+    patternTexture.repeat.set(1, 1);
+    patternTexture.offset.set(0, 0);
+    patternTexture.flipY = true;
+
+    patternTexture.magFilter = THREE.LinearFilter;
+    patternTexture.minFilter = THREE.LinearMipmapLinearFilter;
 
     const material = new THREE.MeshStandardMaterial({
         map: patternTexture,
         metalness: 0.1,
         roughness: 0.8,
+        side: THREE.DoubleSide,
     });
 
     const meshNames = Object.keys(nodes).filter(name => nodes[name]?.geometry);
+
+    useEffect(() => {
+        if (!patternUrl) return;
+        const sourceImage = new Image();
+        sourceImage.crossOrigin = 'anonymous';
+        sourceImage.src = patternUrl;
+        sourceImage.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2048;
+            canvas.height = 2048;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+            const highResUrl = canvas.toDataURL('image/png');
+            setHighResPattern(highResUrl);
+        };
+    }, [patternUrl]);
 
     useEffect(() => {
         if (groupRef.current && cameraControlsRef.current) {
@@ -55,6 +79,7 @@ function Model({ patternUrl, cameraControlsRef, modelFile }) {
 export default function MockupViewer3D({ patternUrl }) {
     const cameraControlsRef = useRef();
     const [selectedModel, setSelectedModel] = React.useState(MODEL_LIST[0]);
+    const [loading, setLoading] = React.useState(true);
 
     // Fungsi untuk mengubah sudut pandang kamera
     const setView = (position) => {
@@ -64,6 +89,17 @@ export default function MockupViewer3D({ patternUrl }) {
             cameraControlsRef.current.setLookAt(camX, camY, camZ, 0, 0, 0, true);
         }
     };
+
+    const handleModelReady = useCallback(
+        (mesh) => {
+            const controls = cameraControlsRef.current;
+            if (!mesh || !controls || typeof controls.fitToBox !== 'function') return;
+
+            controls.fitToBox(mesh, true);
+            setLoading(false);
+        },
+        []
+    );
 
     return (
         <div className="w-full h-full bg-gray-400 rounded-lg relative z-0">
@@ -86,6 +122,7 @@ export default function MockupViewer3D({ patternUrl }) {
                         patternUrl={patternUrl}
                         cameraControlsRef={cameraControlsRef}
                         modelFile={selectedModel.file}
+                        onModelReady={handleModelReady}
                     />
                 </Suspense>
                 <ambientLight intensity={1.5} />

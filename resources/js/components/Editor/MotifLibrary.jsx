@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Search, RefreshCw, Loader2, X, Info } from 'lucide-react';
 
-export default function MotifLibrary({ motifs = [], loading = false, onRefresh }) {
+export default function MotifLibrary({ motifs = [], loading = false, uploading = false, onRefresh, onUpload }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredMotif, setHoveredMotif] = useState(null);
 
@@ -19,20 +19,41 @@ export default function MotifLibrary({ motifs = [], loading = false, onRefresh }
         <div className=''>
             <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#BA682A]">Pustaka Motif</h3>
-                {onRefresh && (
-                    <button
-                        onClick={onRefresh}
-                        disabled={loading}
-                        className="p-1 hover:bg-gray-100 rounded transition-colors"
-                        title="Refresh motif"
-                    >
-                        {loading ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4 text-gray-600" />
-                        )}
-                    </button>
-                )}
+                <div className="flex gap-2">
+                    {onUpload && (
+                        <label className="p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer" title="Unggah motif">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) onUpload(file);
+                                    e.target.value = '';
+                                }}
+                            />
+                            {uploading ? (
+                                <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                            ) : (
+                                <span className="text-xs text-gray-600">Upload</span>
+                            )}
+                        </label>
+                    )}
+                    {onRefresh && (
+                        <button
+                            onClick={onRefresh}
+                            disabled={loading}
+                            className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            title="Refresh motif"
+                        >
+                            {loading ? (
+                                <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                            ) : (
+                                <RefreshCw className="w-4 h-4 text-gray-600" />
+                            )}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Search Input */}

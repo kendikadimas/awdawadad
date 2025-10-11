@@ -1,39 +1,26 @@
 import React from 'react';
 
-export default function LayerPanel({ objects, selectedId, onSelect, onClear }) {
+export default function LayerPanel({ imageLayers, brushLayers, selectedId, onSelect, onRename, onToggle }) {
+    const renderLayer = (layer, icon) => (
+        <div key={layer.id} className={`flex items-center justify-between px-3 py-2 rounded ${selectedId === layer.id ? 'bg-[#F5E7D8]' : 'bg-white'}`}>
+            <button className="flex items-center gap-2 text-left" onClick={() => onSelect(layer.id)}>
+                {icon}
+                <input
+                    className="bg-transparent text-sm font-medium border-none focus:outline-none"
+                    value={layer.name}
+                    onChange={(e) => onRename(layer.id, e.target.value)}
+                />
+            </button>
+            <button onClick={() => onToggle(layer.id)} className="text-xs text-[#BA682A]">
+                {layer.visible ? 'Hide' : 'Show'}
+            </button>
+        </div>
+    );
+
     return (
-        <div className="mt-6 text-[#BA682A]">
-            <div className="flex items-center justify-between mb-2">
-                <h3 className="font-bold">Posisi</h3>
-                <button
-                    onClick={onClear}
-                    className="text-xs text-red-600 hover:text-red-800"
-                    title="Hapus semua motif dari canvas"
-                >
-                    Hapus Semua
-                </button>
-            </div>
-            <div className="bg-gray-100 rounded p-2 max-h-48 overflow-y-auto">
-                {objects.length === 0 ? (
-                    <p className="text-xs text-gray-500 text-center py-2">Canvas kosong.</p>
-                ) : (
-                    // Kita reverse() agar layer teratas muncul di paling atas daftar
-                    [...objects].reverse().map(obj => (
-                        <div
-                            key={obj.id}
-                            onClick={() => onSelect(obj.id)}
-                            className={`p-2 mb-1 text-sm rounded cursor-pointer transition-colors ${
-                                obj.id === selectedId
-                                    ? 'bg-blue-500 text-white'
-                                    : 'bg-white hover:bg-blue-100'
-                            }`}
-                        >
-                            {/* Kita bisa beri nama default atau ambil dari properti objek nantinya */}
-                            Motif - {obj.id.substring(3)}
-                        </div>
-                    ))
-                )}
-            </div>
+        <div className="space-y-2">
+            {imageLayers.map((layer) => renderLayer(layer, <ImageIcon className="w-4 h-4 text-[#BA682A]" />))}
+            {brushLayers.map((layer) => renderLayer(layer, <BrushIcon className="w-4 h-4 text-[#BA682A]" />))}
         </div>
     );
 }

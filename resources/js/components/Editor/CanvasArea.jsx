@@ -6,18 +6,35 @@ import { Brush, Eraser, Hand, Move } from 'lucide-react';
 // Komponen kecil untuk merender satu gambar motif di dalam canvas
 const MotifImage = ({ shapeProps, isSelected, onSelect, onChange }) => {
     const shapeRef = useRef();
-    // Hook 'useImage' untuk memuat gambar dengan aman ke dalam Konva
-    const [image] = useImage(shapeProps.src, 'Anonymous');
+    const resolvedImage = React.useMemo(() => {
+        if (!shapeProps.imageUrl) return { src: null, crossOrigin: undefined };
+
+        const isSameOrigin = shapeProps.imageUrl.startsWith('/')
+            || shapeProps.imageUrl.startsWith(window.location.origin);
+
+        return {
+            src: shapeProps.imageUrl,
+            crossOrigin: isSameOrigin ? undefined : 'Anonymous',
+        };
+    }, [shapeProps.imageUrl]);
+
+    const [image] = useImage(resolvedImage.src, resolvedImage.crossOrigin);
 
     // Hubungkan Transformer ke node ini saat terpilih
     useEffect(() => {
+        const transformer = trRef.current;
+        const shape = shapeRef.current;
+
+        if (!transformer || !shape) return;
+
         if (isSelected) {
-            // trRef didapat dari parent melalui context atau prop, tapi cara ini lebih simpel
-            const tr = shapeRef.current.getStage().findOne('Transformer');
-            if (tr) {
-                tr.nodes([shapeRef.current]);
-                tr.getLayer().batchDraw();
+            transformer.nodes([shape]);
+            const layer = transformer.getLayer();
+            if (layer) {
+                layer.batchDraw();
             }
+        } else {
+            transformer.nodes([]);
         }
     }, [isSelected]);
 
@@ -40,10 +57,10 @@ const MotifImage = ({ shapeProps, isSelected, onSelect, onChange }) => {
             onTransformEnd={() => {
                 const node = shapeRef.current;
                 if (!node) return;
+
                 const scaleX = node.scaleX();
                 const scaleY = node.scaleY();
-                
-                // Reset skala untuk menghindari penumpukan transformasi
+
                 node.scaleX(1);
                 node.scaleY(1);
 
@@ -51,9 +68,9 @@ const MotifImage = ({ shapeProps, isSelected, onSelect, onChange }) => {
                     ...shapeProps,
                     x: node.x(),
                     y: node.y(),
-                    width: Math.max(5, node.width() * scaleX),
-                    height: Math.max(node.height() * scaleY),
                     rotation: node.rotation(),
+                    width: Math.max(5, node.width() * scaleX),
+                    height: Math.max(5, node.height() * scaleY),
                 });
             }}
         />
@@ -83,6 +100,8 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
     const [eraserWidth, setEraserWidth] = useState(20);
     const [pencilWidth, setPencilWidth] = useState(2);
     const [brushWidth, setBrushWidth] = useState(6);
+    const [showGrid, setShowGrid] = useState(true);
+    const gridSize = 40;
 
     // Efek untuk menghubungkan Transformer dengan node yang dipilih
     useEffect(() => {
@@ -402,6 +421,13 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
                     onClick={handleEraser}
+                    onDragMove={(e) => {
+                        if (!snapToGrid) return;
+                        const node = e.target;
+                        const snappedX = Math.round(node.x() / gridSize) * gridSize;
+                        const snappedY = Math.round(node.y() / gridSize) * gridSize;
+                        node.position({ x: snappedX, y: snappedY });
+                    }}
                 >
                     <Layer>
                         <Rect
@@ -459,6 +485,16 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
         lineJoin="round"
     />
 )}
+                        {showGrid && (
+        <>
+            {[...Array(Math.ceil(size.width / gridSize))].map((_, idx) => (
+                <Line key={`v-${idx}`} points={[idx * gridSize, 0, idx * gridSize, size.height]} stroke="#f0e6da" listening={false} />
+            ))}
+            {[...Array(Math.ceil(size.height / gridSize))].map((_, idx) => (
+                <Line key={`h-${idx}`} points={[0, idx * gridSize, size.width, idx * gridSize]} stroke="#f0e6da" listening={false} />
+            ))}
+        </>
+    )}
                         <Transformer ref={trRef} />
                     </Layer>
                 </Stage>

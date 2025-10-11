@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import MockupViewer3D from '@/Components/Editor/MockupViewer3D';
@@ -6,6 +6,8 @@ import MotifLibrary from '@/Components/Editor/MotifLibrary';
 import CanvasArea from '@/Components/Editor/CanvasArea';
 import PropertiesToolbar from '@/Components/Editor/PropertiesToolbar';
 import LayerPanel from '@/Components/Editor/LayerPanel';
+import { nanoid } from 'nanoid';
+import { debounce } from 'lodash';
 
 function downloadURI(uri, name) {
     const link = document.createElement('a');
@@ -19,6 +21,7 @@ function downloadURI(uri, name) {
 export default function DesignEditor({ initialDesign }) {
     // State utama aplikasi editor
     const [canvasObjects, setCanvasObjects] = useState(initialDesign?.canvas_data || []);
+    const [brushStrokes, setBrushStrokes] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
     const [designName, setDesignName] = useState(initialDesign?.title || 'Desain Batik Baru');
     const [isSaving, setIsSaving] = useState(false);
@@ -28,6 +31,21 @@ export default function DesignEditor({ initialDesign }) {
     const [brushColor, setBrushColor] = useState('#000000');
     const [brushWidth, setBrushWidth] = useState(5);
     const [eraserWidth, setEraserWidth] = useState(10);
+    const [uploadingMotif, setUploadingMotif] = useState(false);
+    const [imageLayers, setImageLayers] = useState(() =>
+        (initialDesign?.canvas_data ?? []).map((obj) => ({
+            id: obj.id ?? nanoid(),
+            name: obj.name ?? 'Image Layer',
+            visible: true,
+            data: obj,
+        }))
+    );
+    const [brushLayers, setBrushLayers] = useState([]);
+    const [history, setHistory] = useState({ past: [], present: null, future: [] });
+    const [showGrid, setShowGrid] = useState(true);
+    const [snapToGrid, setSnapToGrid] = useState(true);
+    const [coordinate, setCoordinate] = useState({ x: 0, y: 0 });
+    const [autosaveStatus, setAutosaveStatus] = useState('idle');
 
     const stageRef = useRef();
     const [show3DModal, setShow3DModal] = useState(false);
@@ -41,24 +59,33 @@ export default function DesignEditor({ initialDesign }) {
     const fetchMotifs = async () => {
         try {
             setLoadingMotifs(true);
-            const response = await fetch('/api/motifs/editor');
-            const data = await response.json();
-            setMotifs(data.motifs);
-        } catch (error) {
-            console.error('Error fetching motifs:', error);
-            // Fallback ke data statis jika API gagal
-            setMotifs([
-                { id: 1, name: 'Mega Mendung', file_path: '/images/motifs/1.svg', preview_image_path: '/images/motifs/1.svg' },
-                { id: 2, name: 'Motif Geometris', file_path: '/images/motifs/2.svg', preview_image_path: '/images/motifs/2.svg' },
-                { id: 3, name: 'Gunungan', file_path: '/images/motifs/3.svg', preview_image_path: '/images/motifs/3.svg' },
-                { id: 4, name: 'Parang Oranye', file_path: '/images/motifs/4.svg', preview_image_path: '/images/motifs/4.svg' },
-                { id: 5, name: 'Bunga Simetris', file_path: '/images/motifs/5.svg', preview_image_path: '/images/motifs/5.svg' },
-                { id: 6, name: 'Daun Emas', file_path: '/images/motifs/6.svg', preview_image_path: '/images/motifs/6.svg' },
-                { id: 7, name: 'Garis Vertikal', file_path: '/images/motifs/7.svg', preview_image_path: '/images/motifs/7.svg' },
-                { id: 8, name: 'Parang Emas', file_path: '/images/motifs/8.svg', preview_image_path: '/images/motifs/8.svg' },
+            const [globalRes, personalRes] = await Promise.all([
+                window.axios.get(route('motifs.editor')),
+                window.axios.get(route('motifs.user.index')),
             ]);
+            setMotifs([...globalRes.data.motifs, ...personalRes.data.motifs]);
+        } catch (error) {
+            console.error(error);
         } finally {
             setLoadingMotifs(false);
+        }
+    };
+
+    const handleMotifUpload = async (file) => {
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('name', file.name);
+        try {
+            setUploadingMotif(true);
+            const { data } = await window.axios.post(route('motifs.user.store'), formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setMotifs((prev) => [...prev, data.motif]);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setUploadingMotif(false);
         }
     };
 
@@ -133,6 +160,48 @@ export default function DesignEditor({ initialDesign }) {
         }
     };
 
+    const handleDrop = useCallback(
+        (event) => {
+            event.preventDefault();
+
+            const transfer = event?.nativeEvent?.dataTransfer;
+            if (!transfer) return;
+
+            const motifPayload = transfer.getData('application/json');
+            if (!motifPayload) return;
+
+            let motifData;
+            try {
+                motifData = JSON.parse(motifPayload);
+            } catch (error) {
+                console.warn('Invalid motif payload dropped', error);
+                return;
+            }
+
+            if (!motifData?.preview_image_path && !motifData?.file_path) return;
+
+            const newObject = {
+                id: nanoid(),
+                type: 'image',
+                name: motifData.name ?? 'Motif',
+                imageUrl: motifData.preview_image_path ?? motifData.file_path,
+                x: pointer.x - 100,
+                y: pointer.y - 100,
+                width: motifData.width ?? 200,
+                height: motifData.height ?? 200,
+                rotation: 0,
+                scaleX: 1,
+                scaleY: 1,
+                opacity: 1,
+                draggable: true,
+            };
+
+            setCanvasObjects((prev) => [...prev, newObject]);
+            setSelectedId(newObject.id);
+        },
+        [stageRef, canvasObjects]
+    );
+
     // Hook untuk menangani semua shortcut keyboard
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -196,6 +265,187 @@ export default function DesignEditor({ initialDesign }) {
     // Mendapatkan objek yang dipilih berdasarkan ID
     const selectedObject = canvasObjects.find(obj => obj.id === selectedId);
 
+    const handleMouseMove = useCallback(
+        (event) => {
+            const stage = stageRef.current?.getStage();
+            if (stage) {
+                const pointer = stage.getPointerPosition();
+                if (pointer) setCoordinate(pointer);
+            }
+            if (!isDrawing || currentTool !== 'brush') return;
+            if (!stage) return;
+            const pointer = stage.getPointerPosition();
+            setBrushLayers((prev) => {
+                const next = [...prev];
+                next[next.length - 1].data.points.push(pointer.x, pointer.y);
+                return next;
+            });
+        },
+        [isDrawing, currentTool]
+    );
+
+    const handleMouseDown = useCallback(
+        (event) => {
+            if (!stageRef.current) return;
+            const stage = stageRef.current.getStage();
+            const pointer = stage.getPointerPosition();
+            if (!pointer) return;
+
+            if (currentTool === 'brush') {
+                setIsDrawing(true);
+                setBrushLayers((prev) => [
+                    ...prev,
+                    {
+                        id: nanoid(),
+                        type: 'brush',
+                        points: [pointer.x, pointer.y],
+                        color: activeBrush.color,
+                        size: activeBrush.size,
+                        opacity: activeBrush.opacity,
+                    },
+                ]);
+                return;
+            }
+
+            const clickedOnEmpty = event.target === stage;
+            if (clickedOnEmpty) {
+                setSelectedId(null);
+            }
+        },
+        [currentTool, activeBrush]
+    );
+
+    const handleMouseUp = useCallback(() => {
+        if (isDrawing && currentTool === 'brush') {
+            setIsDrawing(false);
+            setHistory((history) => ({
+                past: [...history.past, history.present],
+                present: {
+                    ...history.present,
+                    brushStrokes: [...brushStrokes],
+                },
+                future: [],
+            }));
+        }
+    }, [isDrawing, currentTool, brushStrokes]);
+
+    const updateHistory = useCallback(
+        (next) => {
+            setHistory(({ past, present }) => ({
+                past: present ? [...past, present] : past,
+                present: next,
+                future: [],
+            }));
+        },
+        []
+    );
+
+    const debouncedAutosave = useMemo(
+        () =>
+            debounce((payload) => {
+                const designId = payload?.id;
+                if (!designId) return;
+                setAutosaveStatus('saving');
+                window.axios
+                    .post(route('designs.update.autosave'), payload)
+                    .then(() => setAutosaveStatus('saved'))
+                    .catch(() => setAutosaveStatus('error'));
+            }, 2000),
+        []
+    );
+
+    useEffect(() => {
+        return () => debouncedAutosave.cancel();
+    }, [debouncedAutosave]);
+
+    useEffect(() => {
+        if (!history.present?.id) return;
+        debouncedAutosave({
+            id: history.present.id,
+            canvas_data: {
+                images: imageLayers,
+                brushes: brushLayers,
+            },
+        });
+    }, [history.present, imageLayers, brushLayers, debouncedAutosave]);
+
+    const pushHistory = useCallback((nextState) => {
+        setHistory(({ past, present }) => ({
+            past: present ? [...past, present] : past,
+            present: nextState,
+            future: [],
+        }));
+    }, []);
+
+    const handleRenameLayer = useCallback((layerId, name) => {
+        setLayers((prev) =>
+            prev.map((layer) => (layer.id === layerId ? { ...layer, name } : layer))
+        );
+    }, []);
+
+    const handleAddLayer = useCallback((type, payload) => {
+        const newLayer = {
+            id: nanoid(),
+            type, // 'brush' | 'image'
+            name: type === 'brush' ? 'Brush Layer' : 'Image Layer',
+            data: payload,
+        };
+        setLayers((prev) => [...prev, newLayer]);
+        pushHistory({ ...history.present, canvasObjects: [...canvasObjects, payload] });
+    }, [canvasObjects, pushHistory, history.present]);
+
+    const handleUndo = useCallback(() => {
+        setHistory(({ past, present, future }) => {
+            if (!past.length) return { past, present, future };
+            const previous = past[past.length - 1];
+            const newPast = past.slice(0, -1);
+            setCanvasObjects(previous.canvasObjects || []);
+            return {
+                past: newPast,
+                present: previous,
+                future: present ? [present, ...future] : future,
+            };
+        });
+    }, []);
+
+    const handleRedo = useCallback(() => {
+        setHistory(({ past, present, future }) => {
+            if (!future.length) return { past, present, future };
+            const next = future[0];
+            const newFuture = future.slice(1);
+            setCanvasObjects(next.canvasObjects || []);
+            return {
+                past: present ? [...past, present] : past,
+                present: next,
+                future: newFuture,
+            };
+        });
+    }, []);
+
+    const addImageLayer = useCallback(
+        (motif) => {
+            const layer = {
+                id: nanoid(),
+                name: motif.name ?? 'Image Layer',
+                visible: true,
+                data: {
+                    ...motif,
+                    imageUrl: motif.preview_image_path ?? motif.file_path,
+                    x: motif.x ?? 100,
+                    y: motif.y ?? 100,
+                    width: motif.width ?? 200,
+                    height: motif.height ?? 200,
+                },
+            };
+            setImageLayers((prev) => [...prev, layer]);
+            updateHistory({
+                id: history.present?.id,
+                canvasObjects: [...canvasObjects, layer.data],
+            });
+        },
+        [canvasObjects, history.present, updateHistory]
+    );
+
     return (
         <>
             <Head title="Editor Desain Batik" />
@@ -247,7 +497,9 @@ export default function DesignEditor({ initialDesign }) {
                         <MotifLibrary 
                             motifs={motifs} 
                             loading={loadingMotifs}
+                            uploading={uploadingMotif}
                             onRefresh={fetchMotifs}
+                            onUpload={handleMotifUpload}
                         />
                     </aside>
                     {/* Area Canvas */}

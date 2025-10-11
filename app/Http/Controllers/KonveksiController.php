@@ -36,8 +36,8 @@ class KonveksiController extends Controller
         }
 
         // Order by rating desc and verification status
-        $konveksis = $query->orderBy('is_verified', 'desc')
-                            ->orderBy('rating', 'desc')
+        $konveksis = $query->orderBy('is_verified', 'asc')
+                            ->orderBy('rating', 'asc')
                             ->paginate(12)
                             ->withQueryString()
                             ->through(function ($konveksi) {
@@ -120,8 +120,8 @@ class KonveksiController extends Controller
             $query->verified();
         }
 
-        $konveksis = $query->orderBy('is_verified', 'desc')
-                          ->orderBy('rating', 'desc')
+        $konveksis = $query->orderBy('is_verified', 'asc')
+                          ->orderBy('rating', 'asc')
                           ->paginate(12);
 
         return response()->json([
