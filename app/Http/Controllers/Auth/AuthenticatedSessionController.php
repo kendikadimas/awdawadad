@@ -34,14 +34,17 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        $user = Auth::user();
-        \Log::info('Role user setelah login: ' . $user->role); // Debug log
+        $user = $request->user();
 
-        if ($user->role === 'Convection' ) {
-            return redirect()->intended(route('konveksi.dashboard'));
+        if ($user->role === 'Convection' && Route::has('konveksi.dashboard')) {
+            return redirect()->route('konveksi.dashboard');
         }
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        if (Route::has('dashboard')) {
+            return redirect()->route('dashboard');
+        }
+
+        return redirect('/');
     }
 
     /**

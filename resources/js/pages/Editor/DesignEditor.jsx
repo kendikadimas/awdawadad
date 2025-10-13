@@ -18,7 +18,12 @@ function downloadURI(uri, name) {
     document.body.removeChild(link);
 }
 
-export default function DesignEditor({ initialDesign }) {
+export default function DesignEditor({ initialDesign, canvasSize }) {
+    const defaultSize = {
+        width: canvasSize?.width ?? 800,
+        height: canvasSize?.height ?? 600,
+    };
+
     // State utama aplikasi editor
     const [canvasObjects, setCanvasObjects] = useState(initialDesign?.canvas_data || []);
     const [brushStrokes, setBrushStrokes] = useState([]);
@@ -26,7 +31,7 @@ export default function DesignEditor({ initialDesign }) {
     const [designName, setDesignName] = useState(initialDesign?.title || 'Desain Batik Baru');
     const [isSaving, setIsSaving] = useState(false);
     const [motifs, setMotifs] = useState([]);
-    const [loadingMotifs, setLoadingMotifs] = useState(true);
+    const [loadingMotifs, setLoadingMotifs] = useState(false);
     const [activeTool, setActiveTool] = useState('select');
     const [brushColor, setBrushColor] = useState('#000000');
     const [brushWidth, setBrushWidth] = useState(5);
@@ -46,30 +51,50 @@ export default function DesignEditor({ initialDesign }) {
     const [snapToGrid, setSnapToGrid] = useState(true);
     const [coordinate, setCoordinate] = useState({ x: 0, y: 0 });
     const [autosaveStatus, setAutosaveStatus] = useState('idle');
+    const [isDrawing, setIsDrawing] = useState(false);
+
+    const activeBrush = useMemo(
+        () => ({ color: brushColor, size: brushWidth, opacity: 1 }),
+        [brushColor, brushWidth]
+    );
 
     const stageRef = useRef();
     const [show3DModal, setShow3DModal] = useState(false);
     const [patternFor3D, setPatternFor3D] = useState('');
 
     // Load motifs dari API saat komponen mount
-    useEffect(() => {
-        fetchMotifs();
-    }, []);
-
-    const fetchMotifs = async () => {
+    const fetchMotifs = useCallback(async () => {
         try {
             setLoadingMotifs(true);
-            const [globalRes, personalRes] = await Promise.all([
-                window.axios.get(route('motifs.editor')),
-                window.axios.get(route('motifs.user.index')),
-            ]);
-            setMotifs([...globalRes.data.motifs, ...personalRes.data.motifs]);
+            const response = await fetch(route('motifs.editor'), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('Motifs response:', data);
+            
+            const fetchedMotifs = data.motifs ?? [];
+            console.log('Total motifs fetched:', fetchedMotifs.length);
+            
+            setMotifs(fetchedMotifs);
         } catch (error) {
-            console.error(error);
+            console.error('Failed to fetch motifs', error);
+            setMotifs([]);
         } finally {
             setLoadingMotifs(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchMotifs();
+    }, [fetchMotifs]);
 
     const handleMotifUpload = async (file) => {
         if (!file) return;
@@ -180,6 +205,9 @@ export default function DesignEditor({ initialDesign }) {
 
             if (!motifData?.preview_image_path && !motifData?.file_path) return;
 
+            const stage = stageRef.current?.getStage();
+            const pointer = stage?.getPointerPosition() ?? { x: defaultSize.width / 2, y: defaultSize.height / 2 };
+
             const newObject = {
                 id: nanoid(),
                 type: 'image',
@@ -199,7 +227,7 @@ export default function DesignEditor({ initialDesign }) {
             setCanvasObjects((prev) => [...prev, newObject]);
             setSelectedId(newObject.id);
         },
-        [stageRef, canvasObjects]
+        [stageRef, defaultSize.width, defaultSize.height]
     );
 
     // Hook untuk menangani semua shortcut keyboard
@@ -272,7 +300,7 @@ export default function DesignEditor({ initialDesign }) {
                 const pointer = stage.getPointerPosition();
                 if (pointer) setCoordinate(pointer);
             }
-            if (!isDrawing || currentTool !== 'brush') return;
+            if (!isDrawing || activeTool !== 'brush') return;
             if (!stage) return;
             const pointer = stage.getPointerPosition();
             setBrushLayers((prev) => {
@@ -281,7 +309,7 @@ export default function DesignEditor({ initialDesign }) {
                 return next;
             });
         },
-        [isDrawing, currentTool]
+        [isDrawing, activeTool]
     );
 
     const handleMouseDown = useCallback(
@@ -291,17 +319,19 @@ export default function DesignEditor({ initialDesign }) {
             const pointer = stage.getPointerPosition();
             if (!pointer) return;
 
-            if (currentTool === 'brush') {
+            if (activeTool === 'brush') {
                 setIsDrawing(true);
                 setBrushLayers((prev) => [
                     ...prev,
                     {
                         id: nanoid(),
                         type: 'brush',
-                        points: [pointer.x, pointer.y],
-                        color: activeBrush.color,
-                        size: activeBrush.size,
-                        opacity: activeBrush.opacity,
+                        data: {
+                            points: [pointer.x, pointer.y],
+                            color: activeBrush.color,
+                            size: activeBrush.size,
+                            opacity: activeBrush.opacity,
+                        },
                     },
                 ]);
                 return;
@@ -312,22 +342,22 @@ export default function DesignEditor({ initialDesign }) {
                 setSelectedId(null);
             }
         },
-        [currentTool, activeBrush]
+        [activeTool, activeBrush]
     );
 
     const handleMouseUp = useCallback(() => {
-        if (isDrawing && currentTool === 'brush') {
+        if (isDrawing && activeTool === 'brush') {
             setIsDrawing(false);
             setHistory((history) => ({
                 past: [...history.past, history.present],
                 present: {
                     ...history.present,
-                    brushStrokes: [...brushStrokes],
+                    brushStrokes: [...brushLayers],
                 },
                 future: [],
             }));
         }
-    }, [isDrawing, currentTool, brushStrokes]);
+    }, [isDrawing, activeTool, brushLayers]);
 
     const updateHistory = useCallback(
         (next) => {
@@ -386,7 +416,7 @@ export default function DesignEditor({ initialDesign }) {
     const handleAddLayer = useCallback((type, payload) => {
         const newLayer = {
             id: nanoid(),
-            type, // 'brush' | 'image'
+            type: 'brush' | 'image',
             name: type === 'brush' ? 'Brush Layer' : 'Image Layer',
             data: payload,
         };
@@ -494,8 +524,8 @@ export default function DesignEditor({ initialDesign }) {
                 <div className="flex flex-grow overflow-hidden gap-4 px-6 py-4">
                     {/* Sidebar Kiri */}
                     <aside className="w-64 bg-white rounded-xl overflow-y-auto shadow-lg p-4 flex flex-shrink-0 border border-[#F3EDE7]">
-                        <MotifLibrary 
-                            motifs={motifs} 
+                        <MotifLibrary
+                            motifs={motifs}
                             loading={loadingMotifs}
                             uploading={uploadingMotif}
                             onRefresh={fetchMotifs}
@@ -510,7 +540,11 @@ export default function DesignEditor({ initialDesign }) {
                             selectedId={selectedId}
                             setSelectedId={setSelectedId}
                             stageRef={stageRef}
-                            style={{ width: '100%'}}
+                            canvasWidth={defaultSize.width}
+                            canvasHeight={defaultSize.height}
+                            showGrid={showGrid}
+                            snapToGrid={snapToGrid}
+                            onDrop={handleDrop}
                         />
                     </main>
                     {/* Sidebar Kanan */}

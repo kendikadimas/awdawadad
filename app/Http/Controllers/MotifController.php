@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class MotifController extends Controller
@@ -56,22 +57,40 @@ class MotifController extends Controller
     }
 
     // API endpoint untuk mendapatkan motif untuk editor
-    public function getForEditor()
+    public function getForEditor(): JsonResponse
     {
-        $motifs = Motif::active()
-            ->select('id', 'name', 'file_path', 'image_url')
+        $motifs = Motif::where('is_active', true)
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(function (Motif $motif) {
+                // Cari path preview dari berbagai kolom
+                $preview = $motif->preview_image_path 
+                    ?? $motif->image_url 
+                    ?? $motif->file_path;
 
-        return response()->json([
-            'motifs' => $motifs->map(function ($motif) {
+                // Convert relative path ke URL publik
+                if ($preview && !Str::startsWith($preview, ['http://', 'https://'])) {
+                    // Jika dimulai dengan '/', anggap sudah path publik
+                    if (!Str::startsWith($preview, '/')) {
+                        $preview = Storage::url($preview);
+                    }
+                }
+
                 return [
                     'id' => $motif->id,
                     'name' => $motif->name,
-                    'file_path' => $motif->file_path,
-                    'preview_image_path' => $motif->image_url,
+                    'description' => $motif->description ?? '',
+                    'category' => $motif->category ?? 'Uncategorized',
+                    'preview_image_path' => $preview,
+                    'file_path' => $preview, // Untuk kompatibilitas
                 ];
-            })
+            });
+
+        \Log::info('Fetched motifs for editor', ['count' => $motifs->count()]);
+
+        return response()->json([
+            'motifs' => $motifs,
+            'total' => $motifs->count(),
         ]);
     }
 }

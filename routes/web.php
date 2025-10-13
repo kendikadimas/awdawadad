@@ -61,16 +61,16 @@ Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function ()
 });
 
 Route::middleware(['auth', 'verified', 'role:Convection,Admin'])->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])
+    Route::get('/konveksi/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])
         ->name('konveksi.dashboard');
 
-    Route::get('/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])
+    Route::get('/konveksi/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])
         ->name('konveksi.orders');
 
-    Route::get('/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])
+    Route::get('/konveksi/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])
         ->name('konveksi.customers');
 
-    Route::get('/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])
+    Route::get('/konveksi/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])
         ->name('konveksi.income');
 });
 

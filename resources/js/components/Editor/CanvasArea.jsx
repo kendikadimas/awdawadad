@@ -4,7 +4,7 @@ import useImage from 'use-image';
 import { Brush, Eraser, Hand, Move } from 'lucide-react';
 
 // Komponen kecil untuk merender satu gambar motif di dalam canvas
-const MotifImage = ({ shapeProps, isSelected, onSelect, onChange }) => {
+const MotifImage = ({ shapeProps, isSelected, onSelect, onChange, trRef }) => {
     const shapeRef = useRef();
     const resolvedImage = React.useMemo(() => {
         if (!shapeProps.imageUrl) return { src: null, crossOrigin: undefined };
@@ -20,23 +20,16 @@ const MotifImage = ({ shapeProps, isSelected, onSelect, onChange }) => {
 
     const [image] = useImage(resolvedImage.src, resolvedImage.crossOrigin);
 
-    // Hubungkan Transformer ke node ini saat terpilih
     useEffect(() => {
+        if (!isSelected || !trRef || !trRef.current || !shapeRef.current) return;
+
         const transformer = trRef.current;
-        const shape = shapeRef.current;
-
-        if (!transformer || !shape) return;
-
-        if (isSelected) {
-            transformer.nodes([shape]);
-            const layer = transformer.getLayer();
-            if (layer) {
-                layer.batchDraw();
-            }
-        } else {
-            transformer.nodes([]);
+        transformer.nodes([shapeRef.current]);
+        const layer = transformer.getLayer();
+        if (layer) {
+            layer.batchDraw();
         }
-    }, [isSelected]);
+    }, [isSelected, trRef]);
 
     return (
         <KonvaImage
@@ -85,11 +78,21 @@ const TOOL_LIST = [
 ];
 
 // Komponen utama untuk seluruh area canvas
-export default function CanvasArea({ objects, setObjects, selectedId, setSelectedId, stageRef }) {
+export default function CanvasArea({ 
+    objects, 
+    setObjects, 
+    selectedId, 
+    setSelectedId, 
+    stageRef, 
+    canvasWidth, 
+    canvasHeight,
+    showGrid,
+    snapToGrid,
+    onDrop 
+}) {
     const trRef = useRef();
     const containerRef = useRef(null);
     const [size, setSize] = useState({ width: 0, height: 0 });
-    // State lokal untuk posisi dan skala panggung (canvas)
     const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
     const [stageScale, setStageScale] = useState(1);
     const [activeTool, setActiveTool] = useState('move');
@@ -100,7 +103,6 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
     const [eraserWidth, setEraserWidth] = useState(20);
     const [pencilWidth, setPencilWidth] = useState(2);
     const [brushWidth, setBrushWidth] = useState(6);
-    const [showGrid, setShowGrid] = useState(true);
     const gridSize = 40;
 
     // Efek untuk menghubungkan Transformer dengan node yang dipilih
@@ -331,6 +333,16 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
         };
     };
 
+    // Gunakan onDrop dari parent jika tersedia
+    const handleDropEvent = (e) => {
+        if (onDrop) {
+            onDrop(e);
+        } else {
+            // Fallback ke handler lokal lama
+            handleDrop(e);
+        }
+    };
+
     return (
         <div className="relative w-full h-full">
             {/* Toolbar */}
@@ -401,7 +413,7 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
                      activeTool === 'pencil' ? "cursor-crosshair" :
                      activeTool === 'eraser' ? "cursor-cell" : "cursor-default")
                 }
-                onDrop={handleDrop}
+                onDrop={handleDropEvent}
                 onDragOver={(e) => e.preventDefault()}
             >
                 <Stage
@@ -416,25 +428,18 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
                     y={stagePos.y}
                     onWheel={handleWheel}
                     onDragEnd={handleStageDragEnd}
-                    draggable={activeTool === 'hand'} // hanya bisa drag canvas saat hand tool
+                    draggable={activeTool === 'hand'}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
                     onClick={handleEraser}
-                    onDragMove={(e) => {
-                        if (!snapToGrid) return;
-                        const node = e.target;
-                        const snappedX = Math.round(node.x() / gridSize) * gridSize;
-                        const snappedY = Math.round(node.y() / gridSize) * gridSize;
-                        node.position({ x: snappedX, y: snappedY });
-                    }}
                 >
                     <Layer>
                         <Rect
-                            x={-stagePos.x / stageScale}
-                            y={-stagePos.y / stageScale}
-                            width={800 / stageScale}
-                            height={600 / stageScale}
+                            x={0}
+                            y={0}
+                            width={canvasWidth}
+                            height={canvasHeight}
                             fill="white"
                             listening={false}
                         />
@@ -443,58 +448,44 @@ export default function CanvasArea({ objects, setObjects, selectedId, setSelecte
                                 key={obj.id}
                                 shapeProps={obj}
                                 isSelected={obj.id === selectedId}
-                                onSelect={() => {
-                                    setSelectedId(obj.id);
-                            }}
-                            onChange={(newAttrs) => {
-                                const newObjects = objects.slice();
-                                const objIndex = newObjects.findIndex(o => o.id === obj.id);
-                                if (objIndex !== -1) {
-                                    newObjects[objIndex] = newAttrs;
-                                    setObjects(newObjects);
-                                }
-                            }}
-                            draggable={activeTool === 'move'} // hanya bisa drag objek saat move tool
-                        />
+                                onSelect={() => setSelectedId(obj.id)}
+                                onChange={(newAttrs) => {
+                                    setObjects((prev) =>
+                                        prev.map((item) =>
+                                            item.id === obj.id ? newAttrs : item
+                                        )
+                                    );
+                                }}
+                                trRef={trRef}
+                            />
                         ))}
-                        {/* Render objek gambar */}
                         {objects.map((obj) => {
-    if (obj.tool === 'pencil' || obj.tool === 'brush') {
-        return (
-            <Line
-                key={obj.id}
-                points={obj.points}
-                stroke={obj.stroke}
-                strokeWidth={obj.strokeWidth}
-                tension={0.5}
-                lineCap="round"
-                lineJoin="round"
-                globalCompositeOperation={obj.tool === 'eraser' ? 'destination-out' : 'source-over'}
-            />
-        );
-    }
-    return null;
-})}
+                            if (obj.tool === 'pencil' || obj.tool === 'brush') {
+                                return (
+                                    <Line
+                                        key={obj.id}
+                                        points={obj.points}
+                                        stroke={obj.stroke}
+                                        strokeWidth={obj.strokeWidth}
+                                        tension={0.5}
+                                        lineCap="round"
+                                        lineJoin="round"
+                                        globalCompositeOperation={obj.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                                    />
+                                );
+                            }
+                            return null;
+                        })}
                         {drawing && currentShape && (currentShape.tool === 'pencil' || currentShape.tool === 'brush') && (
-    <Line
-        points={currentShape.points}
-        stroke={currentShape.stroke}
-        strokeWidth={currentShape.strokeWidth}
-        tension={0.5}
-        lineCap="round"
-        lineJoin="round"
-    />
-)}
-                        {showGrid && (
-        <>
-            {[...Array(Math.ceil(size.width / gridSize))].map((_, idx) => (
-                <Line key={`v-${idx}`} points={[idx * gridSize, 0, idx * gridSize, size.height]} stroke="#f0e6da" listening={false} />
-            ))}
-            {[...Array(Math.ceil(size.height / gridSize))].map((_, idx) => (
-                <Line key={`h-${idx}`} points={[0, idx * gridSize, size.width, idx * gridSize]} stroke="#f0e6da" listening={false} />
-            ))}
-        </>
-    )}
+                            <Line
+                                points={currentShape.points}
+                                stroke={currentShape.stroke}
+                                strokeWidth={currentShape.strokeWidth}
+                                tension={0.5}
+                                lineCap="round"
+                                lineJoin="round"
+                            />
+                        )}
                         <Transformer ref={trRef} />
                     </Layer>
                 </Stage>

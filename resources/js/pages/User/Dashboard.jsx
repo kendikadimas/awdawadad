@@ -18,9 +18,18 @@ export default function Dashboard({ designs = [] }) {
   const { auth } = usePage().props;
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState(0);
+  const [showCanvasModal, setShowCanvasModal] = useState(false);
+  const [customSize, setCustomSize] = useState({ width: 800, height: 600 });
   const user = auth.user;
 
   const filterItems = ['Semua', 'Terbaru', 'Favorit', 'Draft'];
+
+  const canvasPresets = [
+    { label: '1:1 (800×800)', width: 800, height: 800 },
+    { label: '3:4 (900×1200)', width: 900, height: 1200 },
+    { label: '4:3 (1200×900)', width: 1200, height: 900 },
+    { label: '16:9 (1600×900)', width: 1600, height: 900 },
+  ];
 
   // Filter designs berdasarkan search term
   const filteredDesigns = designs.filter(design =>
@@ -51,6 +60,11 @@ export default function Dashboard({ designs = [] }) {
     }
   };
 
+  const openEditor = (width, height) => {
+    setShowCanvasModal(false);
+    router.visit(`/editor?width=${width}&height=${height}`);
+  };
+
   return (
     <UserLayout title="Batik Saya">
       {/* Header dengan Action Cards */}
@@ -67,7 +81,11 @@ export default function Dashboard({ designs = [] }) {
         <div className="flex gap-4">
           {/* Button Buat Batik - mengarah ke Canvas/Editor */}
           <Link
-            href="/editor"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setShowCanvasModal(true);
+            }}
             className="relative overflow-hidden rounded-2xl p-4 text-white shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer group h-16 w-48 block"
             style={{
               background: 'linear-gradient(135deg, #D2691E 0%, #A0522D 100%)',
@@ -242,6 +260,59 @@ export default function Dashboard({ designs = [] }) {
           </div>
         )}
       </div>
+
+      {/* Modal Pilih Canvas */}
+      {showCanvasModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-xl p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-gray-800">Pilih Ukuran Canvas</h2>
+            <div className="space-y-2">
+              {canvasPresets.map((preset) => (
+                <button
+                  key={preset.label}
+                  onClick={() => openEditor(preset.width, preset.height)}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-200 hover:border-[#D2691E] hover:text-[#D2691E] transition"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="border-t pt-4">
+              <p className="text-sm text-gray-600 mb-2">Ukuran Custom (px)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="number"
+                  min={200}
+                  value={customSize.width}
+                  onChange={(e) => setCustomSize((prev) => ({ ...prev, width: Number(e.target.value) }))}
+                  className="border rounded-lg px-3 py-2"
+                  placeholder="Lebar"
+                />
+                <input
+                  type="number"
+                  min={200}
+                  value={customSize.height}
+                  onChange={(e) => setCustomSize((prev) => ({ ...prev, height: Number(e.target.value) }))}
+                  className="border rounded-lg px-3 py-2"
+                  placeholder="Tinggi"
+                />
+              </div>
+              <button
+                onClick={() => openEditor(customSize.width, customSize.height)}
+                className="mt-3 w-full px-4 py-2 bg-[#D2691E] text-white rounded-lg hover:bg-[#A0522D] transition"
+              >
+                Gunakan ukuran custom
+              </button>
+            </div>
+            <button
+              onClick={() => setShowCanvasModal(false)}
+              className="w-full px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
     </UserLayout>
   );
 }
