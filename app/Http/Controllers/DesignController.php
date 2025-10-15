@@ -166,6 +166,6 @@ class DesignController extends Controller
         ]);
 
         // Lempar pengguna ke halaman editor dengan desain baru ini
-        return redirect()->route('dashboard', ['design' => $design->id]);
+        return redirect()->route('user.dashboard', ['design' => $design->id]);
     }
 }
