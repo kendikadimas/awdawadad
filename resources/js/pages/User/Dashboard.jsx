@@ -79,14 +79,10 @@ export default function Dashboard({ designs = [] }) {
         
         {/* Action Cards */}
         <div className="flex gap-4">
-          {/* Button Buat Batik - mengarah ke Canvas/Editor */}
-          <Link
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              setShowCanvasModal(true);
-            }}
-            className="relative overflow-hidden rounded-2xl p-4 text-white shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer group h-16 w-48 block"
+          {/* Button Buat Batik - TAMPILKAN MODAL */}
+          <button
+            onClick={() => setShowCanvasModal(true)}
+            className="relative overflow-hidden rounded-2xl p-4 text-white shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer group h-16 w-48"
             style={{
               background: 'linear-gradient(135deg, #D2691E 0%, #A0522D 100%)',
               boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)'
@@ -105,7 +101,7 @@ export default function Dashboard({ designs = [] }) {
                 <Plus className="w-4 h-4" />
               </div>
             </div>
-          </Link>
+          </button>
 
           {/* Button Generate AI - mengarah ke Batik Generator */}
           <Link
@@ -250,63 +246,71 @@ export default function Dashboard({ designs = [] }) {
             <p className="text-gray-500 mb-4">
               {searchTerm ? 'Tidak ditemukan desain yang sesuai dengan pencarian' : 'Mulai buat desain batik pertama Anda'}
             </p>
-            <Link
-              href="/editor"
+            <button
+              onClick={() => setShowCanvasModal(true)}
               className="inline-flex items-center px-4 py-2 bg-[#D2691E] hover:bg-[#A0522D] text-white rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4 mr-2" />
               Buat Desain Baru
-            </Link>
+            </button>
           </div>
         )}
       </div>
 
       {/* Modal Pilih Canvas */}
       {showCanvasModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-xl p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-gray-800">Pilih Ukuran Canvas</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+            <h2 className="text-xl font-bold text-gray-800">Pilih Ukuran Canvas</h2>
+            <p className="text-sm text-gray-600">Pilih ukuran canvas untuk desain batik Anda</p>
+            
             <div className="space-y-2">
               {canvasPresets.map((preset) => (
                 <button
                   key={preset.label}
                   onClick={() => openEditor(preset.width, preset.height)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-200 hover:border-[#D2691E] hover:text-[#D2691E] transition"
+                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-[#D2691E] hover:bg-[#FFF7ED] transition-all text-left group"
                 >
-                  {preset.label}
+                  <span className="font-medium text-gray-800 group-hover:text-[#D2691E]">
+                    {preset.label}
+                  </span>
                 </button>
               ))}
             </div>
+            
             <div className="border-t pt-4">
-              <p className="text-sm text-gray-600 mb-2">Ukuran Custom (px)</p>
+              <p className="text-sm text-gray-600 mb-2 font-medium">Ukuran Custom (px)</p>
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="number"
                   min={200}
+                  max={3000}
                   value={customSize.width}
                   onChange={(e) => setCustomSize((prev) => ({ ...prev, width: Number(e.target.value) }))}
-                  className="border rounded-lg px-3 py-2"
+                  className="border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-[#D2691E] focus:outline-none"
                   placeholder="Lebar"
                 />
                 <input
                   type="number"
                   min={200}
+                  max={3000}
                   value={customSize.height}
                   onChange={(e) => setCustomSize((prev) => ({ ...prev, height: Number(e.target.value) }))}
-                  className="border rounded-lg px-3 py-2"
+                  className="border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-[#D2691E] focus:outline-none"
                   placeholder="Tinggi"
                 />
               </div>
               <button
                 onClick={() => openEditor(customSize.width, customSize.height)}
-                className="mt-3 w-full px-4 py-2 bg-[#D2691E] text-white rounded-lg hover:bg-[#A0522D] transition"
+                className="mt-3 w-full px-4 py-2 bg-[#D2691E] text-white rounded-lg hover:bg-[#A0522D] transition font-medium"
               >
                 Gunakan ukuran custom
               </button>
             </div>
+            
             <button
               onClick={() => setShowCanvasModal(false)}
-              className="w-full px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+              className="w-full px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition"
             >
               Batal
             </button>

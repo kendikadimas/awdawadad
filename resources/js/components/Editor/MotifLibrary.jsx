@@ -1,9 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, RefreshCw, Loader2, X, Info } from 'lucide-react';
 
 export default function MotifLibrary({ motifs = [], loading = false, uploading = false, onRefresh, onUpload }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredMotif, setHoveredMotif] = useState(null);
+
+    // Debug: Log motifs saat berubah
+    useEffect(() => {
+        console.log('=== MOTIF LIBRARY UPDATE ===');
+        console.log('Motifs count:', motifs.length);
+        console.log('Loading:', loading);
+        if (motifs.length > 0) {
+            console.log('First motif:', motifs[0]);
+        }
+    }, [motifs, loading]);
 
     // Filter motifs berdasarkan search query
     const filteredMotifs = motifs.filter(motif => 
@@ -124,6 +134,7 @@ export default function MotifLibrary({ motifs = [], loading = false, uploading =
                             key={motif.id}
                             className="relative border border-gray-200 p-2 cursor-pointer hover:border-[#BA682A] hover:shadow-sm transition-all rounded-lg group"
                             onDragStart={(e) => {
+                                console.log('Dragging motif:', motif);
                                 e.dataTransfer.setData('application/json', JSON.stringify(motif));
                             }}
                             onMouseEnter={() => setHoveredMotif(motif.id)}
@@ -136,6 +147,7 @@ export default function MotifLibrary({ motifs = [], loading = false, uploading =
                                     alt={motif.name} 
                                     className="w-full h-20 object-cover rounded group-hover:scale-105 transition-transform"
                                     onError={(e) => {
+                                        console.error('Failed to load image:', motif.preview_image_path);
                                         e.target.src = '/images/placeholder-motif.svg';
                                     }}
                                 />

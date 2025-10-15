@@ -7,6 +7,7 @@ use App\Models\Motif;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -17,12 +18,10 @@ class MotifController extends Controller
     {
         $query = Motif::active()->with('user');
 
-        // Filter berdasarkan kategori
         if ($request->category && $request->category !== 'Semua') {
             $query->where('category', $request->category);
         }
 
-        // Search
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->search . '%')
@@ -33,7 +32,6 @@ class MotifController extends Controller
 
         $motifs = $query->orderBy('created_at', 'desc')->get();
 
-        // Transform data untuk frontend
         $motifData = $motifs->map(function ($motif) {
             return [
                 'id' => $motif->id,
@@ -56,41 +54,99 @@ class MotifController extends Controller
         ]);
     }
 
-    // API endpoint untuk mendapatkan motif untuk editor
     public function getForEditor(): JsonResponse
     {
-        $motifs = Motif::where('is_active', true)
-            ->orderBy('name')
-            ->get()
-            ->map(function (Motif $motif) {
-                // Cari path preview dari berbagai kolom
-                $preview = $motif->preview_image_path 
-                    ?? $motif->image_url 
-                    ?? $motif->file_path;
+        Log::info('=== GET MOTIFS FOR EDITOR ===');
+        
+        try {
+            $motifs = Motif::where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->map(function (Motif $motif) {
+                    // Ambil langsung dari database tanpa modifikasi
+                    // Karena path sudah lengkap: /images/motifs/xx.svg
+                    $imageUrl = $motif->image_url ?? $motif->file_path;
+                    
+                    Log::info("Motif {$motif->id}: {$motif->name} | URL: {$imageUrl}");
 
-                // Convert relative path ke URL publik
-                if ($preview && !Str::startsWith($preview, ['http://', 'https://'])) {
-                    // Jika dimulai dengan '/', anggap sudah path publik
-                    if (!Str::startsWith($preview, '/')) {
-                        $preview = Storage::url($preview);
-                    }
-                }
+                    return [
+                        'id' => $motif->id,
+                        'name' => $motif->name,
+                        'description' => $motif->description ?? '',
+                        'category' => $motif->category ?? 'Uncategorized',
+                        'preview_image_path' => $imageUrl, // Langsung pakai dari DB
+                        'file_path' => $imageUrl,
+                        'image_url' => $imageUrl,
+                    ];
+                });
 
-                return [
-                    'id' => $motif->id,
-                    'name' => $motif->name,
-                    'description' => $motif->description ?? '',
-                    'category' => $motif->category ?? 'Uncategorized',
-                    'preview_image_path' => $preview,
-                    'file_path' => $preview, // Untuk kompatibilitas
-                ];
-            });
+            Log::info('Total motifs: ' . $motifs->count());
 
-        \Log::info('Fetched motifs for editor', ['count' => $motifs->count()]);
+            return response()->json([
+                'motifs' => $motifs,
+                'total' => $motifs->count(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getForEditor: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'motifs' => [],
+                'total' => 0,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
-        return response()->json([
-            'motifs' => $motifs,
-            'total' => $motifs->count(),
-        ]);
+    public function storeFromAi(Request $request)
+    {
+        try {
+            $request->validate([
+                'image' => 'required|string',
+                'name' => 'required|string|max:255',
+                'prompt' => 'nullable|string',
+            ]);
+
+            $imageData = $request->image;
+            if (preg_match('/^data:image\/(\w+);base64,/', $imageData, $type)) {
+                $imageData = substr($imageData, strpos($imageData, ',') + 1);
+                $type = strtolower($type[1]);
+
+                $imageData = base64_decode($imageData);
+                $fileName = 'ai_' . time() . '.' . $type;
+                
+                $path = 'motifs/' . $fileName;
+                Storage::disk('public')->put($path, $imageData);
+                $publicUrl = Storage::url($path);
+
+                $motif = Motif::create([
+                    'name' => $request->name,
+                    'description' => $request->prompt ?? 'AI Generated Motif',
+                    'category' => 'AI Generated',
+                    'file_path' => $publicUrl,
+                    'image_url' => $publicUrl,
+                    'user_id' => Auth::id(),
+                    'is_active' => true,
+                ]);
+
+                return response()->json([
+                    'message' => 'Motif AI berhasil disimpan',
+                    'motif' => [
+                        'id' => $motif->id,
+                        'name' => $motif->name,
+                        'preview_image_path' => $publicUrl,
+                        'image_url' => $publicUrl,
+                    ]
+                ]);
+            }
+
+            throw new \Exception('Invalid image format');
+        } catch (\Exception $e) {
+            Log::error('Error in storeFromAi: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Gagal menyimpan motif',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }
