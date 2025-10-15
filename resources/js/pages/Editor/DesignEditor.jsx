@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import MockupViewer3D from '@/Components/Editor/MockupViewer3D';
-import MotifLibrary from '@/Components/Editor/MotifLibrary';
-import CanvasArea from '@/Components/Editor/CanvasArea';
-import PropertiesToolbar from '@/Components/Editor/PropertiesToolbar';
-import LayerPanel from '@/Components/Editor/LayerPanel';
+import MockupViewer3D from '@/components/Editor/MockupViewer3D';
+import MotifLibrary from '@/components/Editor/MotifLibrary';
+import CanvasArea from '@/components/Editor/CanvasArea';
+import PropertiesToolbar from '@/components/Editor/PropertiesToolbar';
+import LayerPanel from '@/components/Editor/LayerPanel';
 import { nanoid } from 'nanoid';
 import { debounce } from 'lodash';
 

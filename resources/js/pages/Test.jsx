@@ -1,4 +1,4 @@
-import Cards from '@/Components/Cards'; // Import komponen Kartu
+import Cards from '@/components/Cards'; // Import komponen Kartu
 import { Head } from '@inertiajs/react';
 
 export default function Test() {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from '@inertiajs/react';
-// import StatCard from '@/Components/StatCard'; // Asumsi Anda punya komponen ini
+// import StatCard from '@/components/StatCard'; // Asumsi Anda punya komponen ini
 import { Package, DollarSign, CheckCircle, Eye, Plus, Inbox, Clock, XCircle } from 'lucide-react';
 
 // Komponen Paginasi
