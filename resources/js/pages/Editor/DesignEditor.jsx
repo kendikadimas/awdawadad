@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import MockupViewer3D from '@/Components/Editor/MockupViewer3D';
 import MotifLibrary from '@/Components/Editor/MotifLibrary';
@@ -19,32 +19,50 @@ function downloadURI(uri, name) {
 }
 
 export default function DesignEditor({ initialDesign }) {
-    // State utama aplikasi editor
+    // Parse query string untuk mendapatkan width & height
+    const { url } = usePage();
+    const urlParams = new URLSearchParams(url.split('?')[1]);
+    const queryWidth = parseInt(urlParams.get('width')) || 800;
+    const queryHeight = parseInt(urlParams.get('height')) || 600;
+
+    const defaultSize = {
+        width: queryWidth,
+        height: queryHeight,
+    };
+
+    console.log('=== CANVAS SIZE ===');
+    console.log('Query Width:', queryWidth);
+    console.log('Query Height:', queryHeight);
+    console.log('Default Size:', defaultSize);
+
+    // State utama aplikasi editor 
     const [canvasObjects, setCanvasObjects] = useState(initialDesign?.canvas_data || []);
-    const [brushStrokes, setBrushStrokes] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
     const [designName, setDesignName] = useState(initialDesign?.title || 'Desain Batik Baru');
     const [isSaving, setIsSaving] = useState(false);
     const [motifs, setMotifs] = useState([]);
     const [loadingMotifs, setLoadingMotifs] = useState(true);
-    const [activeTool, setActiveTool] = useState('select');
-    const [brushColor, setBrushColor] = useState('#000000');
-    const [brushWidth, setBrushWidth] = useState(5);
-    const [eraserWidth, setEraserWidth] = useState(10);
+    
+    // Tool states
+    const [activeTool, setActiveTool] = useState('move');
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [currentTool, setCurrentTool] = useState('move');
+    
+    // Brush/Drawing states
+    const [brushColor, setBrushColor] = useState('#BA682A');
+    const [brushWidth, setBrushWidth] = useState(6);
+    const [eraserWidth, setEraserWidth] = useState(20);
+    const [activeBrush, setActiveBrush] = useState({
+        color: '#BA682A',
+        size: 6,
+        opacity: 1
+    });
+    
+    // Other states
     const [uploadingMotif, setUploadingMotif] = useState(false);
-    const [imageLayers, setImageLayers] = useState(() =>
-        (initialDesign?.canvas_data ?? []).map((obj) => ({
-            id: obj.id ?? nanoid(),
-            name: obj.name ?? 'Image Layer',
-            visible: true,
-            data: obj,
-        }))
-    );
-    const [brushLayers, setBrushLayers] = useState([]);
-    const [history, setHistory] = useState({ past: [], present: null, future: [] });
     const [showGrid, setShowGrid] = useState(true);
     const [snapToGrid, setSnapToGrid] = useState(true);
-    const [coordinate, setCoordinate] = useState({ x: 0, y: 0 });
+    const [pointer, setPointer] = useState({ x: 0, y: 0 });
     const [autosaveStatus, setAutosaveStatus] = useState('idle');
 
     const stageRef = useRef();
@@ -59,31 +77,131 @@ export default function DesignEditor({ initialDesign }) {
     const fetchMotifs = async () => {
         try {
             setLoadingMotifs(true);
-            const [globalRes, personalRes] = await Promise.all([
-                window.axios.get(route('motifs.editor')),
-                window.axios.get(route('motifs.user.index')),
-            ]);
-            setMotifs([...globalRes.data.motifs, ...personalRes.data.motifs]);
+            console.log('=== FETCHING MOTIFS ===');
+            console.log('Route motifs.editor:', route('motifs.editor'));
+            console.log('Route motifs.user.index:', route('motifs.user.index'));
+            
+            // Fetch global motifs
+            console.log('Fetching global motifs...');
+            const globalResponse = await fetch(route('motifs.editor'), {
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin'
+            });
+            
+            console.log('Global response status:', globalResponse.status);
+            console.log('Global response ok:', globalResponse.ok);
+            
+            let globalMotifs = [];
+            if (globalResponse.ok) {
+                const globalData = await globalResponse.json();
+                console.log('Global motifs data:', globalData);
+                console.log('Global motifs count:', globalData.motifs?.length || 0);
+                globalMotifs = globalData.motifs || [];
+            } else {
+                console.warn('Failed to fetch global motifs');
+            }
+            
+            // Fetch personal motifs - JANGAN BIARKAN ERROR MENGHENTIKAN PROSES
+            console.log('Fetching personal motifs...');
+            let personalMotifs = [];
+            try {
+                const personalResponse = await fetch(route('motifs.user.index'), {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin'
+                });
+                
+                console.log('Personal response status:', personalResponse.status);
+                console.log('Personal response ok:', personalResponse.ok);
+                
+                if (personalResponse.ok) {
+                    const personalData = await personalResponse.json();
+                    console.log('Personal motifs data:', personalData);
+                    console.log('Personal motifs count:', personalData.motifs?.length || 0);
+                    personalMotifs = personalData.motifs || [];
+                } else {
+                    console.warn('Failed to fetch personal motifs, using only global motifs');
+                }
+            } catch (personalError) {
+                console.warn('Personal motifs error (non-critical):', personalError.message);
+                // Lanjutkan dengan global motifs saja
+            }
+            
+            // Combine motifs
+            const allMotifs = [...globalMotifs, ...personalMotifs];
+            
+            console.log('=== MOTIFS LOADED ===');
+            console.log('Total motifs:', allMotifs.length);
+            console.log('Global:', globalMotifs.length, 'Personal:', personalMotifs.length);
+            
+            if (allMotifs.length > 0) {
+                console.log('First motif sample:', allMotifs[0]);
+            } else {
+                console.warn('No motifs found!');
+            }
+            
+            setMotifs(allMotifs);
         } catch (error) {
-            console.error(error);
+            console.error('=== ERROR FETCHING MOTIFS ===');
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            setMotifs([]);
         } finally {
             setLoadingMotifs(false);
+            console.log('=== FETCH COMPLETE ===');
         }
     };
 
     const handleMotifUpload = async (file) => {
         if (!file) return;
+        
+        console.log('Uploading motif:', file.name);
+        
         const formData = new FormData();
         formData.append('file', file);
         formData.append('name', file.name);
+        
         try {
             setUploadingMotif(true);
-            const { data } = await window.axios.post(route('motifs.user.store'), formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
+            
+            // Get CSRF token
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            console.log('CSRF Token:', csrfToken);
+            
+            const response = await fetch(route('motifs.user.store'), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: formData,
+                credentials: 'same-origin'
             });
+            
+            console.log('Upload response status:', response.status);
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('Upload error data:', errorData);
+                throw new Error(errorData.message || 'Upload failed');
+            }
+            
+            const data = await response.json();
+            console.log('Uploaded motif:', data.motif);
+            
             setMotifs((prev) => [...prev, data.motif]);
+            alert('Motif berhasil diunggah!');
         } catch (error) {
-            console.error(error);
+            console.error('Upload error:', error);
+            alert('Gagal mengunggah motif: ' + error.message);
         } finally {
             setUploadingMotif(false);
         }
@@ -98,13 +216,15 @@ export default function DesignEditor({ initialDesign }) {
         const thumbnail = stageRef.current.toDataURL({
             mimeType: 'image/jpeg',
             quality: 0.8,
-            pixelRatio: 1, // Resolusi 1x cukup untuk thumbnail
+            pixelRatio: 1,
         });
 
         const designData = {
             title: designName,
             canvas_data: canvasObjects,
-            thumbnail: thumbnail, // Kirim thumbnail sebagai data base64
+            thumbnail: thumbnail,
+            canvas_width: defaultSize.width,
+            canvas_height: defaultSize.height,
         };
 
         // 2. Tentukan rute dan metode (buat baru atau update)
@@ -137,12 +257,11 @@ export default function DesignEditor({ initialDesign }) {
     const handleShow3D = () => {
         if (!stageRef.current) return;
 
-        // Ekspor hanya area canvas 800x600, mulai dari (0,0)
         const patternDataURL = stageRef.current.toDataURL({
             x: 0,
             y: 0,
-            width: 800,
-            height: 600,
+            width: defaultSize.width,
+            height: defaultSize.height,
             mimeType: 'image/png',
             pixelRatio: 1
         });
@@ -199,7 +318,7 @@ export default function DesignEditor({ initialDesign }) {
             setCanvasObjects((prev) => [...prev, newObject]);
             setSelectedId(newObject.id);
         },
-        [stageRef, canvasObjects]
+        [pointer, canvasObjects]
     );
 
     // Hook untuk menangani semua shortcut keyboard
@@ -231,7 +350,7 @@ export default function DesignEditor({ initialDesign }) {
                 e.preventDefault();
                 const newObject = {
                     ...selectedObject,
-                    id: 'obj' + Date.now(),
+                    id: nanoid(),
                     x: selectedObject.x + 15,
                     y: selectedObject.y + 15,
                 };
@@ -244,13 +363,11 @@ export default function DesignEditor({ initialDesign }) {
                 e.preventDefault();
                 const newObjects = [...canvasObjects];
                 
-                // Send Backward
                 if (e.key === '[' && selectedIndex > 0) {
                     [newObjects[selectedIndex], newObjects[selectedIndex - 1]] = [newObjects[selectedIndex - 1], newObjects[selectedIndex]];
                     setCanvasObjects(newObjects);
                 }
 
-                // Bring Forward
                 if (e.key === ']' && selectedIndex < newObjects.length - 1) {
                     [newObjects[selectedIndex], newObjects[selectedIndex + 1]] = [newObjects[selectedIndex + 1], newObjects[selectedIndex]];
                     setCanvasObjects(newObjects);
@@ -265,186 +382,19 @@ export default function DesignEditor({ initialDesign }) {
     // Mendapatkan objek yang dipilih berdasarkan ID
     const selectedObject = canvasObjects.find(obj => obj.id === selectedId);
 
-    const handleMouseMove = useCallback(
-        (event) => {
-            const stage = stageRef.current?.getStage();
-            if (stage) {
-                const pointer = stage.getPointerPosition();
-                if (pointer) setCoordinate(pointer);
-            }
-            if (!isDrawing || currentTool !== 'brush') return;
-            if (!stage) return;
-            const pointer = stage.getPointerPosition();
-            setBrushLayers((prev) => {
-                const next = [...prev];
-                next[next.length - 1].data.points.push(pointer.x, pointer.y);
-                return next;
-            });
-        },
-        [isDrawing, currentTool]
-    );
-
-    const handleMouseDown = useCallback(
-        (event) => {
-            if (!stageRef.current) return;
-            const stage = stageRef.current.getStage();
-            const pointer = stage.getPointerPosition();
-            if (!pointer) return;
-
-            if (currentTool === 'brush') {
-                setIsDrawing(true);
-                setBrushLayers((prev) => [
-                    ...prev,
-                    {
-                        id: nanoid(),
-                        type: 'brush',
-                        points: [pointer.x, pointer.y],
-                        color: activeBrush.color,
-                        size: activeBrush.size,
-                        opacity: activeBrush.opacity,
-                    },
-                ]);
-                return;
-            }
-
-            const clickedOnEmpty = event.target === stage;
-            if (clickedOnEmpty) {
-                setSelectedId(null);
-            }
-        },
-        [currentTool, activeBrush]
-    );
-
-    const handleMouseUp = useCallback(() => {
-        if (isDrawing && currentTool === 'brush') {
-            setIsDrawing(false);
-            setHistory((history) => ({
-                past: [...history.past, history.present],
-                present: {
-                    ...history.present,
-                    brushStrokes: [...brushStrokes],
-                },
-                future: [],
-            }));
-        }
-    }, [isDrawing, currentTool, brushStrokes]);
-
-    const updateHistory = useCallback(
-        (next) => {
-            setHistory(({ past, present }) => ({
-                past: present ? [...past, present] : past,
-                present: next,
-                future: [],
-            }));
-        },
-        []
-    );
-
-    const debouncedAutosave = useMemo(
-        () =>
-            debounce((payload) => {
-                const designId = payload?.id;
-                if (!designId) return;
-                setAutosaveStatus('saving');
-                window.axios
-                    .post(route('designs.update.autosave'), payload)
-                    .then(() => setAutosaveStatus('saved'))
-                    .catch(() => setAutosaveStatus('error'));
-            }, 2000),
-        []
-    );
-
+    // Sinkronkan activeBrush dengan state brush
     useEffect(() => {
-        return () => debouncedAutosave.cancel();
-    }, [debouncedAutosave]);
+        setActiveBrush({
+            color: brushColor,
+            size: brushWidth,
+            opacity: 1
+        });
+    }, [brushColor, brushWidth]);
 
+    // Sinkronkan currentTool dengan activeTool
     useEffect(() => {
-        if (!history.present?.id) return;
-        debouncedAutosave({
-            id: history.present.id,
-            canvas_data: {
-                images: imageLayers,
-                brushes: brushLayers,
-            },
-        });
-    }, [history.present, imageLayers, brushLayers, debouncedAutosave]);
-
-    const pushHistory = useCallback((nextState) => {
-        setHistory(({ past, present }) => ({
-            past: present ? [...past, present] : past,
-            present: nextState,
-            future: [],
-        }));
-    }, []);
-
-    const handleRenameLayer = useCallback((layerId, name) => {
-        setLayers((prev) =>
-            prev.map((layer) => (layer.id === layerId ? { ...layer, name } : layer))
-        );
-    }, []);
-
-    const handleAddLayer = useCallback((type, payload) => {
-        const newLayer = {
-            id: nanoid(),
-            type, // 'brush' | 'image'
-            name: type === 'brush' ? 'Brush Layer' : 'Image Layer',
-            data: payload,
-        };
-        setLayers((prev) => [...prev, newLayer]);
-        pushHistory({ ...history.present, canvasObjects: [...canvasObjects, payload] });
-    }, [canvasObjects, pushHistory, history.present]);
-
-    const handleUndo = useCallback(() => {
-        setHistory(({ past, present, future }) => {
-            if (!past.length) return { past, present, future };
-            const previous = past[past.length - 1];
-            const newPast = past.slice(0, -1);
-            setCanvasObjects(previous.canvasObjects || []);
-            return {
-                past: newPast,
-                present: previous,
-                future: present ? [present, ...future] : future,
-            };
-        });
-    }, []);
-
-    const handleRedo = useCallback(() => {
-        setHistory(({ past, present, future }) => {
-            if (!future.length) return { past, present, future };
-            const next = future[0];
-            const newFuture = future.slice(1);
-            setCanvasObjects(next.canvasObjects || []);
-            return {
-                past: present ? [...past, present] : past,
-                present: next,
-                future: newFuture,
-            };
-        });
-    }, []);
-
-    const addImageLayer = useCallback(
-        (motif) => {
-            const layer = {
-                id: nanoid(),
-                name: motif.name ?? 'Image Layer',
-                visible: true,
-                data: {
-                    ...motif,
-                    imageUrl: motif.preview_image_path ?? motif.file_path,
-                    x: motif.x ?? 100,
-                    y: motif.y ?? 100,
-                    width: motif.width ?? 200,
-                    height: motif.height ?? 200,
-                },
-            };
-            setImageLayers((prev) => [...prev, layer]);
-            updateHistory({
-                id: history.present?.id,
-                canvasObjects: [...canvasObjects, layer.data],
-            });
-        },
-        [canvasObjects, history.present, updateHistory]
-    );
+        setCurrentTool(activeTool);
+    }, [activeTool]);
 
     return (
         <>
@@ -461,6 +411,9 @@ export default function DesignEditor({ initialDesign }) {
                         </Link>
                         <span className="ml-4 px-3 py-1 rounded-full bg-[#FFF7ED] text-[#BA682A] font-bold text-lg tracking-tight shadow">
                             Canvas Batik Editor
+                        </span>
+                        <span className="ml-2 px-3 py-1 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium">
+                            {defaultSize.width} × {defaultSize.height} px
                         </span>
                     </div>
                     <div className="flex items-center gap-4">
@@ -503,14 +456,17 @@ export default function DesignEditor({ initialDesign }) {
                         />
                     </aside>
                     {/* Area Canvas */}
-                    <main className="flex-1 flex bg-white rounded-xl shadow-lg border border-[#F3EDE7]">
+                    <main className="flex-1 flex bg-gray-100 rounded-xl shadow-lg border border-[#F3EDE7] items-center justify-center overflow-hidden">
                         <CanvasArea 
                             objects={canvasObjects} 
                             setObjects={setCanvasObjects}
                             selectedId={selectedId}
                             setSelectedId={setSelectedId}
                             stageRef={stageRef}
-                            style={{ width: '100%'}}
+                            canvasWidth={defaultSize.width}
+                            canvasHeight={defaultSize.height}
+                            showGrid={showGrid}
+                            snapToGrid={snapToGrid}
                         />
                     </main>
                     {/* Sidebar Kanan */}

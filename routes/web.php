@@ -22,14 +22,14 @@ Route::get('/', function () {
 
     return match (Auth::user()->role) {
         'Convection' => redirect()->route('konveksi.dashboard'),
-        default      => redirect()->route('dashboard'),
+        default      => redirect()->route('user.dashboard'),
     };
 });
 
-// Routes yang memerlukan autentikasi
+// Routes untuk General User dan Admin
 Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function () {
     // Dashboard utama - menampilkan desain user
-    Route::get('/dashboard', [DesignController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard', [DesignController::class, 'index'])->name('user.dashboard');
 
     // Design routes
     Route::post('/designs', [DesignController::class, 'store'])->name('designs.store');
@@ -60,17 +60,18 @@ Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function ()
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+// Routes untuk Convection dan Admin
 Route::middleware(['auth', 'verified', 'role:Convection,Admin'])->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])
+    Route::get('/konveksi/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])
         ->name('konveksi.dashboard');
 
-    Route::get('/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])
+    Route::get('/konveksi/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])
         ->name('konveksi.orders');
 
-    Route::get('/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])
+    Route::get('/konveksi/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])
         ->name('konveksi.customers');
 
-    Route::get('/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])
+    Route::get('/konveksi/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])
         ->name('konveksi.income');
 });
 
