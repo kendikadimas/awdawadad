@@ -66,6 +66,6 @@ class RegisteredUserController extends Controller
             return redirect()->route('konveksi.dashboard');
         }
 
-        return redirect(route('dashboard'));
+        return redirect(route('user.dashboard'));
     }
 }
