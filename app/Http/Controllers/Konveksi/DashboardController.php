@@ -178,7 +178,7 @@ class DashboardController extends Controller
 
         // ✅ Perbaikan: Filter berdasarkan payment_status dan date range
         $query = Production::where('convection_user_id', $convectionId)
-                    ->with(['customer:id,name,email', 'design:id,title', 'product:id,name'])
+                    ->with(['customer:id,name,email', 'design:id,title,image_url', 'product:id,name'])
                     ->orderBy('created_at', 'desc');
 
         // ✅ Filter berdasarkan payment status
@@ -209,16 +209,16 @@ class DashboardController extends Controller
 
         $invoices = $query->paginate(10)->withQueryString();
 
-        // ✅ Statistik pendapatan
-        $totalPendapatan = Production::where('convection_user_id', $convectionId)
+        // ✅ Statistik pendapatan - Cast ke float dan default 0
+        $totalPendapatan = (float) Production::where('convection_user_id', $convectionId)
             ->where('payment_status', 'paid')
-            ->sum('total_price');
+            ->sum('total_price') ?: 0;
 
-        $pendapatanBulanIni = Production::where('convection_user_id', $convectionId)
+        $pendapatanBulanIni = (float) Production::where('convection_user_id', $convectionId)
             ->where('payment_status', 'paid')
             ->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
-            ->sum('total_price');
+            ->sum('total_price') ?: 0;
 
         $pesananBelumBayar = Production::where('convection_user_id', $convectionId)
             ->where('payment_status', 'pending')
@@ -227,8 +227,8 @@ class DashboardController extends Controller
         return Inertia::render('Konveksi/Income', [
             'invoices' => $invoices,
             'stats' => [
-                'totalPendapatan' => (float) $totalPendapatan,
-                'pendapatanBulanIni' => (float) $pendapatanBulanIni,
+                'totalPendapatan' => $totalPendapatan,
+                'pendapatanBulanIni' => $pendapatanBulanIni,
                 'pesananBelumBayar' => $pesananBelumBayar,
             ],
             'filters' => $request->only(['search', 'payment_status', 'date_from', 'date_to'])

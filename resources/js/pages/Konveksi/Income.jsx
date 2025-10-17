@@ -3,12 +3,26 @@ import { Head, Link, router } from '@inertiajs/react';
 import KonveksiLayout from '@/layouts/Konveksi/Layout';
 import { DollarSign, Search } from 'lucide-react';
 
+// ✅ Helper function untuk format Rupiah
+const formatRupiah = (amount) => {
+    // Pastikan amount adalah number dan tidak null/undefined
+    const numAmount = parseFloat(amount) || 0;
+    
+    return new Intl.NumberFormat('id-ID', { 
+        style: 'currency', 
+        currency: 'IDR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(numAmount);
+};
+
 // Komponen untuk badge status pembayaran
 const PaymentStatusBadge = ({ status }) => {
     const statusMap = {
         'paid': { text: 'Paid', color: 'bg-green-100 text-green-700' },
+        'pending': { text: 'Pending', color: 'bg-yellow-100 text-yellow-700' },
         'unpaid': { text: 'Unpaid', color: 'bg-red-100 text-red-700' },
-        'cancelled': { text: 'Inactive', color: 'bg-gray-100 text-gray-700' },
+        'cancelled': { text: 'Cancelled', color: 'bg-gray-100 text-gray-700' },
     };
     const { text, color } = statusMap[status] || statusMap['cancelled'];
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{text}</span>;
@@ -16,6 +30,8 @@ const PaymentStatusBadge = ({ status }) => {
 
 // Komponen untuk Paginasi
 const Pagination = ({ links }) => {
+    if (!links || links.length === 0) return null;
+    
     return (
         <div className="flex items-center justify-center mt-6">
             {links.map((link, index) => {
@@ -45,12 +61,17 @@ const Pagination = ({ links }) => {
     );
 };
 
-export default function Income({ auth, invoices, totalPendapatan, filters }) {
-    const [search, setSearch] = useState(filters.search || '');
+export default function Income({ auth, invoices, stats, filters }) {
+    const [search, setSearch] = useState(filters?.search || '');
+
+    // ✅ Default values jika stats undefined
+    const totalPendapatan = stats?.totalPendapatan || 0;
+    const pendapatanBulanIni = stats?.pendapatanBulanIni || 0;
+    const pesananBelumBayar = stats?.pesananBelumBayar || 0;
 
     const handleSearch = (e) => {
         e.preventDefault();
-        router.get(route('konveksi.income'), { search }, {
+        router.get('/konveksi-penghasilan', { search }, {
             preserveState: true,
             replace: true,
         });
@@ -62,16 +83,45 @@ export default function Income({ auth, invoices, totalPendapatan, filters }) {
             <div className="p-6 space-y-6">
                 <h1 className="text-2xl font-bold" style={{ color: '#BA682A' }}>Penghasilan</h1>
 
-                {/* Kartu Total Pendapatan */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5 w-full md:w-1/3">
-                    <div className="bg-green-100 p-4 rounded-full">
-                        <DollarSign className="w-6 h-6 text-green-500"/>
+                {/* ✅ Kartu Statistik */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Total Pendapatan */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5">
+                        <div className="bg-green-100 p-4 rounded-full">
+                            <DollarSign className="w-6 h-6 text-green-500"/>
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Total Pendapatan</p>
+                            <p className="text-2xl font-bold text-gray-800">
+                                {formatRupiah(totalPendapatan)}
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <p className="text-sm font-medium text-gray-500">Total Pendapatan</p>
-                        <p className="text-3xl font-bold text-gray-800">
-                            {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(totalPendapatan)}
-                        </p>
+
+                    {/* Pendapatan Bulan Ini */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5">
+                        <div className="bg-blue-100 p-4 rounded-full">
+                            <DollarSign className="w-6 h-6 text-blue-500"/>
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Bulan Ini</p>
+                            <p className="text-2xl font-bold text-gray-800">
+                                {formatRupiah(pendapatanBulanIni)}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Pesanan Belum Bayar */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5">
+                        <div className="bg-yellow-100 p-4 rounded-full">
+                            <DollarSign className="w-6 h-6 text-yellow-500"/>
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Belum Bayar</p>
+                            <p className="text-2xl font-bold text-gray-800">
+                                {pesananBelumBayar} Pesanan
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -98,34 +148,54 @@ export default function Income({ auth, invoices, totalPendapatan, filters }) {
                                     <th className="p-4">ID Transaksi</th>
                                     <th className="p-4">Produk</th>
                                     <th className="p-4">Pelanggan</th>
-                                    <th className="p-4">Harga</th>
-                                    <th className="p-4">Jumlah Pesanan</th>
+                                    <th className="p-4">Harga/Unit</th>
+                                    <th className="p-4">Jumlah</th>
+                                    <th className="p-4">Total</th>
                                     <th className="p-4">Tanggal</th>
-                                    <th className="p-4">Status Pembayaran</th>
+                                    <th className="p-4">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {invoices.data.map(invoice => (
-                                    <tr key={invoice.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-4 font-medium">ID-{invoice.id}</td>
-                                        <td className="p-4 font-medium flex items-center gap-3">
-                                            <img src={invoice.design.image_url || 'https://via.placeholder.com/40'} alt={invoice.product.name} className="w-10 h-10 object-cover rounded-md bg-gray-100" />
-                                            {invoice.product.name}
-                                        </td>
-                                        <td className="p-4">{invoice.customer.name}</td>
-                                        <td className="p-4 text-gray-600">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(invoice.price_per_unit)}</td>
-                                        <td className="p-4 font-medium">{invoice.quantity}</td>
-                                        <td className="p-4 text-gray-600">{new Date(invoice.created_at).toLocaleDateString('id-ID')}</td>
-                                        <td className="p-4">
-                                            <PaymentStatusBadge status={invoice.payment_status} />
+                                {invoices?.data && invoices.data.length > 0 ? (
+                                    invoices.data.map(invoice => (
+                                        <tr key={invoice.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-4 font-medium">ID-{invoice.id}</td>
+                                            <td className="p-4 font-medium flex items-center gap-3">
+                                                <img 
+                                                    src={invoice.design?.image_url || 'https://via.placeholder.com/40'} 
+                                                    alt={invoice.product?.name || 'Product'} 
+                                                    className="w-10 h-10 object-cover rounded-md bg-gray-100" 
+                                                />
+                                                {invoice.product?.name || 'N/A'}
+                                            </td>
+                                            <td className="p-4">{invoice.customer?.name || 'N/A'}</td>
+                                            <td className="p-4 text-gray-600">
+                                                {formatRupiah(invoice.price_per_unit)}
+                                            </td>
+                                            <td className="p-4 font-medium">{invoice.quantity || 0}</td>
+                                            <td className="p-4 font-bold text-green-600">
+                                                {formatRupiah(invoice.total_price)}
+                                            </td>
+                                            <td className="p-4 text-gray-600">
+                                                {new Date(invoice.created_at).toLocaleDateString('id-ID')}
+                                            </td>
+                                            <td className="p-4">
+                                                <PaymentStatusBadge status={invoice.payment_status} />
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="8" className="p-8 text-center text-gray-500">
+                                            Tidak ada data invoice
                                         </td>
                                     </tr>
-                                ))}
+                                )}
                             </tbody>
                         </table>
                     </div>
                     
-                    <Pagination links={invoices.links} />
+                    {invoices?.links && <Pagination links={invoices.links} />}
                 </div>
             </div>
         </KonveksiLayout>
