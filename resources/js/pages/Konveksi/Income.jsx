@@ -174,7 +174,7 @@ export default function Income({ auth, invoices, stats, filters }) {
                                             </td>
                                             <td className="p-4 font-medium">{invoice.quantity || 0}</td>
                                             <td className="p-4 font-bold text-green-600">
-                                                {formatRupiah(invoice.total_price)}
+                              {formatRupiah(invoice.total_price)}
                                             </td>
                                             <td className="p-4 text-gray-600">
                                                 {new Date(invoice.created_at).toLocaleDateString('id-ID')}
