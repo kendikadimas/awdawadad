@@ -209,8 +209,8 @@ class DesignController extends Controller
             'image_url' => $filename, // Gunakan gambar AI juga sebagai thumbnail
             'user_id' => Auth::id(),
         ]);
-
-        // Lempar pengguna ke halaman editor dengan desain baru ini
-        return redirect()->route('editor.show', ['design' => $design->id]);
+ 
+        // Redirect ke dashboard dengan pesan sukses
+        return redirect()->route('dashboard')->with('success', 'Desain berhasil disimpan!');
     }
 }
