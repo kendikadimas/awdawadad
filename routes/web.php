@@ -82,19 +82,23 @@ Route::middleware(['auth', 'verified', 'role:Admin'])->group(function () {
     
     // User Management
     Route::get('/admin-users', [AdminUserController::class, 'index'])->name('admin.users.index');
+    Route::post('/admin-users', [AdminUserController::class, 'store'])->name('admin.users.store');
+    Route::put('/admin-users/{user}', [AdminUserController::class, 'update'])->name('admin.users.update');
     Route::put('/admin-users/{user}/role', [AdminUserController::class, 'updateRole'])->name('admin.users.updateRole');
     Route::delete('/admin-users/{user}', [AdminUserController::class, 'destroy'])->name('admin.users.destroy');
     
     // Motif Management
     Route::get('/admin-motifs', [AdminMotifController::class, 'index'])->name('admin.motifs.index');
     Route::post('/admin-motifs', [AdminMotifController::class, 'store'])->name('admin.motifs.store');
-    Route::put('/admin-motifs/{motif}', [AdminMotifController::class, 'update'])->name('admin.motifs.update');
-    Route::delete('/admin-motifs/{motif}', [AdminMotifController::class, 'destroy'])->name('admin.motifs.destroy');
+    Route::post('/admin-motifs/{motif}', [AdminMotifController::class, 'update'])->name('admin.motifs.update'); // POST karena ada file upload
     Route::put('/admin-motifs/{motif}/toggle-status', [AdminMotifController::class, 'toggleStatus'])->name('admin.motifs.toggleStatus');
+    Route::delete('/admin-motifs/{motif}', [AdminMotifController::class, 'destroy'])->name('admin.motifs.destroy');
     
     // Transaction Management
     Route::get('/admin-transactions', [AdminTransactionController::class, 'index'])->name('admin.transactions.index');
+    Route::get('/admin-transactions/{transaction}', [AdminTransactionController::class, 'show'])->name('admin.transactions.show');
     Route::put('/admin-transactions/{transaction}/status', [AdminTransactionController::class, 'updateStatus'])->name('admin.transactions.updateStatus');
+    Route::delete('/admin-transactions/{transaction}', [AdminTransactionController::class, 'destroy'])->name('admin.transactions.destroy');
 });
 
 // ✅ Shared routes untuk semua authenticated users
