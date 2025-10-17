@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminMotifController;
 use App\Http\Controllers\Admin\AdminTransactionController;
+use App\Http\Controllers\Konveksi\DashboardController as KonveksiDashboardController; // ✅ Import Controller Konveksi
 
 // Route halaman utama (welcome)
 Route::get('/', function () {
@@ -28,13 +29,13 @@ Route::get('/', function () {
     return match (Auth::user()->role) {
         'Admin' => redirect()->route('admin.dashboard'),
         'Convection' => redirect()->route('konveksi.dashboard'),
-        default => redirect()->route('user.dashboard'),
+        default => redirect()->route('dashboard'),
     };
 });
 
 // ✅ Routes untuk General User (role: General)
 Route::middleware(['auth', 'verified', 'role:General'])->group(function () {
-    Route::get('/dashboard', [DesignController::class, 'index'])->name('user.dashboard');
+    Route::get('/dashboard', [DesignController::class, 'index'])->name('dashboard');
 
     // Design routes
     Route::post('/designs', [DesignController::class, 'store'])->name('designs.store');
@@ -63,33 +64,37 @@ Route::middleware(['auth', 'verified', 'role:General'])->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-// ✅ Routes untuk Konveksi (role: Convection)
-Route::middleware(['auth', 'verified', 'role:Convection'])->prefix('konveksi')->name('konveksi.')->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])->name('dashboard');
-    Route::get('/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])->name('orders');
-    Route::get('/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])->name('customers');
-    Route::get('/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])->name('income');
+// ✅ Routes untuk Konveksi (role: Convection) - TANPA PREFIX
+Route::middleware(['auth', 'verified', 'role:Convection'])->group(function () {
+    Route::get('/konveksi-dashboard', [KonveksiDashboardController::class, 'index'])->name('konveksi.dashboard');
+    Route::get('/konveksi-pesanan', [KonveksiDashboardController::class, 'orders'])->name('konveksi.orders');
+    Route::get('/konveksi-pelanggan', [KonveksiDashboardController::class, 'customers'])->name('konveksi.customers');
+    Route::get('/konveksi-penghasilan', [KonveksiDashboardController::class, 'income'])->name('konveksi.income');
+    
+    // Profile untuk konveksi
+    Route::get('/konveksi-profile', [ProfileController::class, 'edit'])->name('konveksi.profile.edit');
+    Route::patch('/konveksi-profile', [ProfileController::class, 'update'])->name('konveksi.profile.update');
 });
 
-// ✅ Routes untuk Admin (role: Admin)
-Route::middleware(['auth', 'verified', 'role:Admin'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+// ✅ Routes untuk Admin (role: Admin) - TANPA PREFIX
+Route::middleware(['auth', 'verified', 'role:Admin'])->group(function () {
+    Route::get('/admin-dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
     
     // User Management
-    Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
-    Route::put('/users/{user}/role', [AdminUserController::class, 'updateRole'])->name('users.updateRole');
-    Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+    Route::get('/admin-users', [AdminUserController::class, 'index'])->name('admin.users.index');
+    Route::put('/admin-users/{user}/role', [AdminUserController::class, 'updateRole'])->name('admin.users.updateRole');
+    Route::delete('/admin-users/{user}', [AdminUserController::class, 'destroy'])->name('admin.users.destroy');
     
     // Motif Management
-    Route::get('/motifs', [AdminMotifController::class, 'index'])->name('motifs.index');
-    Route::post('/motifs', [AdminMotifController::class, 'store'])->name('motifs.store');
-    Route::put('/motifs/{motif}', [AdminMotifController::class, 'update'])->name('motifs.update');
-    Route::delete('/motifs/{motif}', [AdminMotifController::class, 'destroy'])->name('motifs.destroy');
-    Route::put('/motifs/{motif}/toggle-status', [AdminMotifController::class, 'toggleStatus'])->name('motifs.toggleStatus');
+    Route::get('/admin-motifs', [AdminMotifController::class, 'index'])->name('admin.motifs.index');
+    Route::post('/admin-motifs', [AdminMotifController::class, 'store'])->name('admin.motifs.store');
+    Route::put('/admin-motifs/{motif}', [AdminMotifController::class, 'update'])->name('admin.motifs.update');
+    Route::delete('/admin-motifs/{motif}', [AdminMotifController::class, 'destroy'])->name('admin.motifs.destroy');
+    Route::put('/admin-motifs/{motif}/toggle-status', [AdminMotifController::class, 'toggleStatus'])->name('admin.motifs.toggleStatus');
     
     // Transaction Management
-    Route::get('/transactions', [AdminTransactionController::class, 'index'])->name('transactions.index');
-    Route::put('/transactions/{transaction}/status', [AdminTransactionController::class, 'updateStatus'])->name('transactions.updateStatus');
+    Route::get('/admin-transactions', [AdminTransactionController::class, 'index'])->name('admin.transactions.index');
+    Route::put('/admin-transactions/{transaction}/status', [AdminTransactionController::class, 'updateStatus'])->name('admin.transactions.updateStatus');
 });
 
 // ✅ Shared routes untuk semua authenticated users

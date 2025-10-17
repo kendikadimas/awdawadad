@@ -19,36 +19,56 @@ class DashboardController extends Controller
     {
         $convectionId = Auth::id();
 
-        // Ambil data untuk Stat Cards
+        // ✅ Ambil data untuk Stat Cards
         $totalPenghasilan = Production::where('convection_user_id', $convectionId)
-            ->where('payment_status', 'paid')->sum('total_price');
+            ->where('payment_status', 'paid')
+            ->sum('total_price');
+            
         $totalPesanan = Production::where('convection_user_id', $convectionId)->count();
+        
+        // ✅ Perbaikan: Gunakan distinct dengan select
         $totalPelanggan = Production::where('convection_user_id', $convectionId)
-            ->distinct('user_id')->count();
+            ->distinct('user_id')
+            ->count('user_id');
 
-        // Ambil data untuk Laporan Pemesanan (contoh: 6 bulan terakhir)
-       $laporanPemesanan = Production::where('convection_user_id', $convectionId)
-    ->where('payment_status', 'paid') // <-- TAMBAHKAN FILTER INI
-    ->select(
-        DB::raw('SUM(total_price) as total'),
-        DB::raw("DATE_FORMAT(created_at, '%b') as month")
-    )
-    ->where('created_at', '>', now()->subMonths(6))
-    ->groupBy('month')
-    ->orderBy('created_at')
-    ->get();
+        // ✅ Perbaikan: Laporan Pemesanan 6 bulan terakhir (dengan groupBy yang benar)
+        $laporanPemesanan = Production::where('convection_user_id', $convectionId)
+            ->where('payment_status', 'paid')
+            ->where('created_at', '>=', now()->subMonths(6))
+            ->select(
+                DB::raw('SUM(total_price) as total'),
+                DB::raw("DATE_FORMAT(created_at, '%b') as month"),
+                DB::raw("MONTH(created_at) as month_number") // ✅ Untuk ordering yang benar
+            )
+            ->groupBy('month', 'month_number')
+            ->orderBy('month_number', 'asc')
+            ->get()
+            ->map(function($item) {
+                return [
+                    'month' => $item->month,
+                    'total' => (float) $item->total,
+                ];
+            });
 
-        // Ambil data untuk daftar Pelanggan Teratas
+        // ✅ Perbaikan: Top Pelanggan dengan data lebih lengkap
         $topPelanggan = Production::where('convection_user_id', $convectionId)
-            ->with('customer')
-            ->select('user_id', DB::raw('count(*) as total_pesanan'))
-            ->groupBy('user_id')->orderBy('total_pesanan', 'desc')
-            ->limit(5)->get();
+            ->with('customer:id,name,email')
+            ->select('user_id', DB::raw('count(*) as total_pesanan'), DB::raw('SUM(total_price) as total_belanja'))
+            ->groupBy('user_id')
+            ->orderBy('total_pesanan', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function($item) {
+                return [
+                    'customer' => $item->customer,
+                    'total_pesanan' => $item->total_pesanan,
+                    'total_belanja' => (float) $item->total_belanja,
+                ];
+            });
 
-        // Render komponen React 'Konveksi/Dashboard' dan kirimkan datanya
         return Inertia::render('Konveksi/Dashboard', [
             'stats' => [
-                'penghasilan' => $totalPenghasilan,
+                'penghasilan' => (float) $totalPenghasilan,
                 'totalPesanan' => $totalPesanan,
                 'totalPelanggan' => $totalPelanggan,
             ],
@@ -61,37 +81,54 @@ class DashboardController extends Controller
     {
         $convectionId = Auth::id();
 
-        // Ambil semua pesanan untuk konveksi ini, dengan relasi yang dibutuhkan
+        // ✅ Perbaikan: Tambahkan filter status
         $query = Production::where('convection_user_id', $convectionId)
-                    ->with(['customer', 'design', 'product']) // Eager load untuk efisiensi
+                    ->with(['customer:id,name,email', 'design:id,title', 'product:id,name'])
                     ->orderBy('created_at', 'desc');
 
-        // Fitur Pencarian (opsional)
-        if ($request->has('search')) {
+        // ✅ Filter berdasarkan status
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('production_status', $request->status);
+        }
+
+        // ✅ Perbaikan: Pencarian yang lebih baik
+        if ($request->has('search') && $request->search) {
             $searchTerm = $request->search;
-            $query->whereHas('customer', function ($q) use ($searchTerm) {
-                $q->where('name', 'like', "%{$searchTerm}%");
-            })->orWhereHas('product', function ($q) use ($searchTerm) {
-                $q->where('name', 'like', "%{$searchTerm}%");
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('id', 'like', "%{$searchTerm}%")
+                  ->orWhereHas('customer', function ($subq) use ($searchTerm) {
+                      $subq->where('name', 'like', "%{$searchTerm}%")
+                           ->orWhere('email', 'like', "%{$searchTerm}%");
+                  })
+                  ->orWhereHas('product', function ($subq) use ($searchTerm) {
+                      $subq->where('name', 'like', "%{$searchTerm}%");
+                  });
             });
         }
 
-        // Ambil data dengan paginasi
         $orders = $query->paginate(10)->withQueryString();
 
-        // Ambil data untuk kartu statistik di atas
+        // ✅ Statistik pesanan
         $stats = [
             'masuk' => Production::where('convection_user_id', $convectionId)->count(),
-            'selesai' => Production::where('convection_user_id', $convectionId)->where('production_status', 'diterima_selesai')->count(),
-            'proses' => Production::where('convection_user_id', $convectionId)->where('production_status', 'diproses')->count(),
-            'ditolak' => Production::where('convection_user_id', $convectionId)->where('production_status', 'ditolak')->count(),
-            'dikirim' => Production::where('convection_user_id', $convectionId)->where('production_status', 'dikirim')->count(),
+            'selesai' => Production::where('convection_user_id', $convectionId)
+                ->where('production_status', 'diterima_selesai')
+                ->count(),
+            'proses' => Production::where('convection_user_id', $convectionId)
+                ->where('production_status', 'diproses')
+                ->count(),
+            'ditolak' => Production::where('convection_user_id', $convectionId)
+                ->where('production_status', 'ditolak')
+                ->count(),
+            'dikirim' => Production::where('convection_user_id', $convectionId)
+                ->where('production_status', 'dikirim')
+                ->count(),
         ];
 
         return Inertia::render('Konveksi/Orders', [
             'orders' => $orders,
             'stats' => $stats,
-            'filters' => $request->only(['search']) // Kirim kembali filter ke frontend
+            'filters' => $request->only(['search', 'status'])
         ]);
     }
 
@@ -99,25 +136,38 @@ class DashboardController extends Controller
     {
         $convectionId = Auth::id();
 
-        // Ambil ID semua pelanggan unik yang pernah memesan dari konveksi ini
-        $customerIds = Production::where('convection_user_id', $convectionId)
-            ->distinct()
-            ->pluck('user_id');
+        // ✅ Perbaikan: Lebih efisien dengan join
+        $query = User::whereHas('productions', function($q) use ($convectionId) {
+                $q->where('convection_user_id', $convectionId);
+            })
+            ->withCount(['productions as total_orders' => function($q) use ($convectionId) {
+                $q->where('convection_user_id', $convectionId);
+            }])
+            ->withSum(['productions as total_spent' => function($q) use ($convectionId) {
+                $q->where('convection_user_id', $convectionId)
+                  ->where('payment_status', 'paid');
+            }], 'total_price')
+            ->orderBy('total_orders', 'desc');
 
-        // Ambil data user dari ID yang sudah didapat
-        $query = User::whereIn('id', $customerIds);
-
-        // Fitur Pencarian (opsional)
-        if ($request->has('search')) {
-            $query->where('name', 'like', "%{$request->search}%");
+        // ✅ Pencarian
+        if ($request->has('search') && $request->search) {
+            $query->where(function($q) use ($request) {
+                $q->where('name', 'like', "%{$request->search}%")
+                  ->orWhere('email', 'like', "%{$request->search}%");
+            });
         }
 
-        // Ambil data dengan paginasi
         $customers = $query->paginate(10)->withQueryString();
+
+        // ✅ Tambahkan statistik pelanggan
+        $totalCustomers = User::whereHas('productions', function($q) use ($convectionId) {
+            $q->where('convection_user_id', $convectionId);
+        })->count();
 
         return Inertia::render('Konveksi/Customers', [
             'customers' => $customers,
-            'filters' => $request->only(['search']) // Kirim kembali filter ke frontend
+            'totalCustomers' => $totalCustomers,
+            'filters' => $request->only(['search'])
         ]);
     }
 
@@ -125,35 +175,62 @@ class DashboardController extends Controller
     {
         $convectionId = Auth::id();
 
-        // Ambil semua data produksi yang sudah dibayar
+        // ✅ Perbaikan: Filter berdasarkan payment_status dan date range
         $query = Production::where('convection_user_id', $convectionId)
-                    ->with(['customer', 'design', 'product'])
+                    ->with(['customer:id,name,email', 'design:id,title', 'product:id,name'])
                     ->orderBy('created_at', 'desc');
 
-        // Fitur Pencarian (opsional)
-        if ($request->has('search')) {
+        // ✅ Filter berdasarkan payment status
+        if ($request->has('payment_status') && $request->payment_status !== 'all') {
+            $query->where('payment_status', $request->payment_status);
+        }
+
+        // ✅ Filter berdasarkan tanggal
+        if ($request->has('date_from') && $request->date_from) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+        
+        if ($request->has('date_to') && $request->date_to) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        // ✅ Pencarian
+        if ($request->has('search') && $request->search) {
             $searchTerm = $request->search;
             $query->where(function($q) use ($searchTerm) {
                 $q->where('id', 'like', "%{$searchTerm}%")
                   ->orWhereHas('customer', function ($subq) use ($searchTerm) {
-                      $subq->where('name', 'like', "%{$searchTerm}%");
+                      $subq->where('name', 'like', "%{$searchTerm}%")
+                           ->orWhere('email', 'like', "%{$searchTerm}%");
                   });
             });
         }
 
-        // Ambil data dengan paginasi
         $invoices = $query->paginate(10)->withQueryString();
 
-        // Ambil data untuk kartu total pendapatan
+        // ✅ Statistik pendapatan
         $totalPendapatan = Production::where('convection_user_id', $convectionId)
             ->where('payment_status', 'paid')
             ->sum('total_price');
 
+        $pendapatanBulanIni = Production::where('convection_user_id', $convectionId)
+            ->where('payment_status', 'paid')
+            ->whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->sum('total_price');
+
+        $pesananBelumBayar = Production::where('convection_user_id', $convectionId)
+            ->where('payment_status', 'pending')
+            ->count();
+
         return Inertia::render('Konveksi/Income', [
             'invoices' => $invoices,
-            'totalPendapatan' => $totalPendapatan,
-            'filters' => $request->only(['search'])
+            'stats' => [
+                'totalPendapatan' => (float) $totalPendapatan,
+                'pendapatanBulanIni' => (float) $pendapatanBulanIni,
+                'pesananBelumBayar' => $pesananBelumBayar,
+            ],
+            'filters' => $request->only(['search', 'payment_status', 'date_from', 'date_to'])
         ]);
     }
-
 }

@@ -43,13 +43,13 @@ class RegisteredUserController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'role' => $request->role, // ✅ Simpan sebagai 'General' atau 'Convection'
+            'role' => $request->role,
         ]);
 
         event(new Registered($user));
         Auth::login($user);
 
-        // ✅ Jika role Convection, buat data konveksi
+        // ✅ Redirect ke route yang benar
         if ($user->role === 'Convection') {
             Konveksi::firstOrCreate(
                 ['user_id' => $user->id],
@@ -66,7 +66,6 @@ class RegisteredUserController extends Controller
             return redirect()->route('konveksi.dashboard');
         }
 
-        // ✅ Jika role General, ke dashboard user
-        return redirect()->route('user.dashboard');
+        return redirect()->route('dashboard');
     }
 }

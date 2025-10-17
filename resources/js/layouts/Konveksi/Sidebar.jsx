@@ -1,14 +1,14 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutDashboard, ShoppingCart, Users, DollarSign, Package } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Users, DollarSign } from 'lucide-react';
 
 export default function Sidebar() {
   const { url } = usePage();
 
   const menuItems = [
-    { name: 'Dashboard', href: route('konveksi.dashboard'), icon: <LayoutDashboard className="w-5 h-5" /> },
-    { name: 'Pesanan', href: route('konveksi.orders'), icon: <ShoppingCart className="w-5 h-5" /> },
-    { name: 'Pelanggan', href: route('konveksi.customers'), icon: <Users className="w-5 h-5" /> },
-    { name: 'Penghasilan', href: route('konveksi.income'), icon: <DollarSign className="w-5 h-5" /> },
+    { name: 'Dashboard', href: '/konveksi-dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { name: 'Pesanan', href: '/konveksi-pesanan', icon: <ShoppingCart className="w-5 h-5" /> },
+    { name: 'Pelanggan', href: '/konveksi-pelanggan', icon: <Users className="w-5 h-5" /> },
+    { name: 'Penghasilan', href: '/konveksi-penghasilan', icon: <DollarSign className="w-5 h-5" /> },
   ];
 
   return (
@@ -19,13 +19,13 @@ export default function Sidebar() {
           src="/images/LARASENA.png"
           alt="Larasena Logo"
           className="object-contain h-46 hover:transform hover:scale-105 transition-transform duration-300"
-          />
-        </div>
+        />
+      </div>
 
       {/* Menu Items */}
       <nav className="flex-1 p-4 space-y-2">
         {menuItems.map((item) => {
-          const isActive = url === item.href || (item.href !== '/' && url.startsWith(item.href));
+          const isActive = url === item.href;
           return (
             <Link
               key={item.name}

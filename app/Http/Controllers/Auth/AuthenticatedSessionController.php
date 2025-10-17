@@ -34,12 +34,12 @@ class AuthenticatedSessionController extends Controller
 
         $user = Auth::user();
         
-        // ✅ Redirect berdasarkan role dengan exact match
+        // ✅ Redirect berdasarkan role dengan route name yang benar
         return match ($user->role) {
             'Admin' => redirect()->intended(route('admin.dashboard')),
             'Convection' => redirect()->intended(route('konveksi.dashboard')),
-            'General' => redirect()->intended(route('user.dashboard')),
-            default => redirect()->intended(route('user.dashboard')),
+            'General' => redirect()->intended(route('dashboard')),
+            default => redirect()->intended(route('dashboard')),
         };
     }
 
