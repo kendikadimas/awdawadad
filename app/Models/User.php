@@ -62,6 +62,12 @@ class User extends Authenticatable
         return $this->hasMany(Motif::class);
     }
     
+    // ✅ Alias untuk productions (semua pesanan yang dibuat user sebagai customer)
+    public function productions(): HasMany
+    {
+        return $this->hasMany(Production::class, 'user_id');
+    }
+
     // Pesanan produksi yang dibuat oleh pengguna (sebagai customer)
     public function productionOrders(): HasMany
     {

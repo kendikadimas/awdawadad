@@ -136,10 +136,13 @@ class DashboardController extends Controller
     {
         $convectionId = Auth::id();
 
-        // ✅ Perbaikan: Lebih efisien dengan join
-        $query = User::whereHas('productions', function($q) use ($convectionId) {
-                $q->where('convection_user_id', $convectionId);
-            })
+        // ✅ Ambil ID customer yang pernah memesan
+        $customerIds = Production::where('convection_user_id', $convectionId)
+            ->distinct()
+            ->pluck('user_id');
+
+        // ✅ Query user berdasarkan ID tersebut
+        $query = User::whereIn('id', $customerIds)
             ->withCount(['productions as total_orders' => function($q) use ($convectionId) {
                 $q->where('convection_user_id', $convectionId);
             }])
@@ -159,10 +162,8 @@ class DashboardController extends Controller
 
         $customers = $query->paginate(10)->withQueryString();
 
-        // ✅ Tambahkan statistik pelanggan
-        $totalCustomers = User::whereHas('productions', function($q) use ($convectionId) {
-            $q->where('convection_user_id', $convectionId);
-        })->count();
+        // ✅ Total customer
+        $totalCustomers = $customerIds->count();
 
         return Inertia::render('Konveksi/Customers', [
             'customers' => $customers,
