@@ -128,16 +128,26 @@ function splitLineByEraser(linePoints, eraserPoints, eraserRadius) {
 }
 
 export default function CanvasArea({ 
-    objects, 
-    setObjects, 
-    selectedId, 
-    setSelectedId, 
-    stageRef, 
-    canvasWidth, 
-    canvasHeight,
+    canvasObjects = [], // ✅ Terima dari parent
+    setCanvasObjects,   // ✅ Terima dari parent
+    selectedId,
+    setSelectedId,
+    stageRef,
+    pointer,
+    setPointer,
+    activeBrush,
+    isDrawing,
+    setIsDrawing,
+    currentTool,
     showGrid,
     snapToGrid,
+    onDrop,
+    defaultSize = { width: 800, height: 800 } // ✅ Terima dari parent dengan default
 }) {
+    // ✅ Destructure defaultSize
+    const canvasWidth = defaultSize.width;
+    const canvasHeight = defaultSize.height;
+
     const trRef = useRef();
     const containerRef = useRef(null);
     const layerRef = useRef(null);
@@ -169,7 +179,7 @@ export default function CanvasArea({
         } else {
             trRef.current.nodes([]);
         }
-    }, [selectedId, activeTool, objects]);
+    }, [selectedId, activeTool, canvasObjects]); // ✅ Ubah objects jadi canvasObjects
 
     // Responsive sizing - LANGSUNG tanpa delay
     useEffect(() => {
@@ -183,7 +193,6 @@ export default function CanvasArea({
             
             console.log('Container dimensions:', { containerWidth, containerHeight });
             
-            // Langsung set size tanpa validasi width/height === 0
             setSize({ width: containerWidth, height: containerHeight });
 
             const padding = 100;
@@ -331,12 +340,12 @@ export default function CanvasArea({
                     type: 'line',
                     id: 'stroke-' + Date.now(),
                 };
-                setObjects(prev => [...prev, finalShape]);
+                setCanvasObjects(prev => [...prev, finalShape]); // ✅ Ubah setObjects jadi setCanvasObjects
             }
         } else if (activeTool === 'eraser' && currentShape.points) {
             const eraserRadius = eraserWidth / 2;
             
-            setObjects(prev => {
+            setCanvasObjects(prev => { // ✅ Ubah setObjects jadi setCanvasObjects
                 const newObjects = [];
                 
                 prev.forEach(obj => {
@@ -411,7 +420,7 @@ export default function CanvasArea({
                 scaleY: 1,
             };
             
-            setObjects(prev => [...prev, newObject]);
+            setCanvasObjects(prev => [...prev, newObject]); // ✅ Ubah setObjects jadi setCanvasObjects
             setSelectedId(newObject.id);
             setActiveTool('move');
         } catch (error) {
@@ -570,7 +579,7 @@ export default function CanvasArea({
                 onDrop={handleContainerDrop}
                 onDragOver={handleDragOver}
             >
-                {shouldShowCanvas && (
+                {size.width > 0 && size.height > 0 && (
                     <Stage
                         width={size.width}
                         height={size.height}
@@ -632,7 +641,7 @@ export default function CanvasArea({
                                     ctx.rect(0, 0, canvasWidth, canvasHeight);
                                 }}
                             >
-                                {objects.map((obj) => {
+                                {canvasObjects.map((obj) => { // ✅ Ubah objects jadi canvasObjects
                                     if (obj.type === 'line') {
                                         return (
                                             <Line
@@ -660,7 +669,7 @@ export default function CanvasArea({
                                                     }
                                                 }}
                                                 onChange={(newAttrs) => {
-                                                    setObjects((prev) =>
+                                                    setCanvasObjects((prev) => // ✅ Ubah setObjects jadi setCanvasObjects
                                                         prev.map((item) =>
                                                             item.id === obj.id ? newAttrs : item
                                                         )

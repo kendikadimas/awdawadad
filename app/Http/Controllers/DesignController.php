@@ -33,18 +33,23 @@ class DesignController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        \Log::info('=== STORING DESIGN ===');
+        \Log::info('Request data:', $request->all());
+
+        $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
+            // 'description' => 'nullable|string',
             'canvas_data' => 'required|array',
-            'thumbnail' => 'nullable|string' // Base64 image data
+            'canvas_width' => 'required|integer|min:200',
+            'canvas_height' => 'required|integer|min:200',
+            'thumbnail' => 'nullable|string'
         ]);
+
+        \Log::info('Validated data:', $validated);
 
         $thumbnailPath = null;
 
-        // Simpan thumbnail jika ada
         if ($request->thumbnail) {
-            // Hapus prefix data:image/jpeg;base64,
             $thumbnailData = substr($request->thumbnail, strpos($request->thumbnail, ',') + 1);
             $thumbnailData = base64_decode($thumbnailData);
             $filename = 'designs/thumbnails/' . Auth::id() . '_' . time() . '.jpg';
@@ -54,14 +59,22 @@ class DesignController extends Controller
         }
 
         $design = Design::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'canvas_data' => $request->canvas_data,
+            'title' => $validated['title'],
+            // 'description' => $validated['description'],
+            'canvas_data' => json_encode($validated['canvas_data']),
+            'canvas_width' => (int) $validated['canvas_width'],
+            'canvas_height' => (int) $validated['canvas_height'],
             'image_url' => $thumbnailPath,
             'user_id' => Auth::id()
         ]);
 
-        return redirect()->route('dashboard');
+        \Log::info('Design created:', [
+            'id' => $design->id,
+            'canvas_width' => $design->canvas_width,
+            'canvas_height' => $design->canvas_height,
+        ]);
+
+        return redirect()->route('user.dashboard');
     }
 
     public function show($id)
@@ -69,26 +82,55 @@ class DesignController extends Controller
         $design = Design::where('user_id', Auth::id())
             ->findOrFail($id);
 
+        // Decode canvas_data jika string
+        if (is_string($design->canvas_data)) {
+            $design->canvas_data = json_decode($design->canvas_data, true);
+        }
+
+        // Pastikan canvas_width dan canvas_height ada
+        if (!$design->canvas_width) {
+            $design->canvas_width = 800;
+        }
+        if (!$design->canvas_height) {
+            $design->canvas_height = 600;
+        }
+
         return Inertia::render('Editor/DesignEditor', [
-            'initialDesign' => $design
+            'initialDesign' => [
+                'id' => $design->id,
+                'title' => $design->title,
+                // 'description' => $design->description,
+                'canvas_data' => $design->canvas_data,
+                'canvas_width' => (int) $design->canvas_width,
+                'canvas_height' => (int) $design->canvas_height,
+                'image_url' => $design->image_url ? Storage::url($design->image_url) : null,
+                'created_at' => $design->created_at,
+                'updated_at' => $design->updated_at,
+            ]
         ]);
     }
 
     public function update(Request $request, $id)
     {
-        $design = Design::where('user_id', Auth::id())
-            ->findOrFail($id);
+        $design = Design::where('user_id', Auth::id())->findOrFail($id);
 
-        $request->validate([
+        $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
+            // 'description' => 'nullable|string',
             'canvas_data' => 'required|array',
+            'canvas_width' => 'required|integer|min:200',
+            'canvas_height' => 'required|integer|min:200',
             'thumbnail' => 'nullable|string'
+        ]);
+
+        \Log::info('Updating design', [
+            'design_id' => $id,
+            'canvas_width' => $validated['canvas_width'],
+            'canvas_height' => $validated['canvas_height'],
         ]);
 
         $thumbnailPath = $design->image_url;
 
-        // Update thumbnail jika ada
         if ($request->has('thumbnail') && $request->thumbnail) {
             if ($design->image_url) {
                 Storage::disk('public')->delete($design->image_url);
@@ -103,13 +145,15 @@ class DesignController extends Controller
         }
 
         $design->update([
-            'title' => $request->title,
-            'description' => $request->description,
-            'canvas_data' => $request->canvas_data,
+            'title' => $validated['title'],
+            // 'description' => $validated['description'],
+            'canvas_data' => json_encode($validated['canvas_data']),
+            'canvas_width' => (int) $validated['canvas_width'],
+            'canvas_height' => (int) $validated['canvas_height'],
             'image_url' => $thumbnailPath
         ]);
 
-        return redirect()->route('dashboard');
+        return redirect()->route('user.dashboard')->with('success', 'Design berhasil diupdate!');
     }
 
     public function destroy($id)
@@ -117,15 +161,14 @@ class DesignController extends Controller
         $design = Design::where('user_id', Auth::id())
             ->findOrFail($id);
 
-        // Hapus thumbnail jika ada
+        // Hapus file thumbnail jika ada
         if ($design->image_url) {
-            $path = str_replace('/storage/', '', $design->image_url);
-            Storage::disk('public')->delete($path);
+            Storage::disk('public')->delete($design->image_url);
         }
 
         $design->delete();
 
-        return response()->json([
+        return Inertia::render('User/Dashboard', [
             'success' => true,
             'message' => 'Desain berhasil dihapus'
         ]);
@@ -160,12 +203,14 @@ class DesignController extends Controller
 
         $design = Design::create([
             'title' => $request->title,
-            'canvas_data' => $canvasData,
+            'canvas_data' => json_encode($canvasData),
+            'canvas_width' => 800,
+            'canvas_height' => 600,
             'image_url' => $filename, // Gunakan gambar AI juga sebagai thumbnail
             'user_id' => Auth::id(),
         ]);
 
         // Lempar pengguna ke halaman editor dengan desain baru ini
-        return redirect()->route('user.dashboard', ['design' => $design->id]);
+        return redirect()->route('editor.show', ['design' => $design->id]);
     }
 }

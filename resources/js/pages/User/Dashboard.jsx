@@ -185,9 +185,16 @@ export default function Dashboard({ designs = [] }) {
                 <img
                   src={design.image_url || 'https://via.placeholder.com/400x300?text=No+Image'}
                   alt={design.title}
-                  className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-48 object-contain bg-gray-50" // ✅ Ubah dari cover ke contain
                 />
                 
+                {/* Size badge - ✅ TAMPILKAN UKURAN CANVAS */}
+                <div className="absolute top-3 left-3">
+                  <span className="bg-blue-600/90 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-md font-medium">
+                    {design.canvas_width || 800} × {design.canvas_height || 600}
+                  </span>
+                </div>
+
                 {/* Date Tag */}
                 <div className="absolute top-3 right-3">
                   <span className="bg-white/90 backdrop-blur-sm text-gray-600 text-xs px-2 py-1 rounded-md font-medium">

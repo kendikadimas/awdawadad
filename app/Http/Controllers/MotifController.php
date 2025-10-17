@@ -2,149 +2,189 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Models\Motif;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class MotifController extends Controller
 {
-    public function index(Request $request)
+    /**
+     * Get motifs for editor (global motifs only)
+     */
+    public function editor()
     {
-        $query = Motif::active()->with('user');
-
-        if ($request->category && $request->category !== 'Semua') {
-            $query->where('category', $request->category);
-        }
-
-        if ($request->search) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('description', 'like', '%' . $request->search . '%')
-                  ->orWhere('location', 'like', '%' . $request->search . '%');
-            });
-        }
-
-        $motifs = $query->orderBy('created_at', 'desc')->get();
-
-        $motifData = $motifs->map(function ($motif) {
-            return [
-                'id' => $motif->id,
-                'title' => $motif->name,
-                'description' => $motif->description,
-                'category' => $motif->category,
-                'timeAgo' => $motif->time_ago,
-                'location' => $motif->location,
-                'image' => $motif->image_url,
-                'colors' => $motif->colors ?? ['#8B4513', '#D2691E', '#F4A460'],
-            ];
-        });
-
-        return Inertia::render('User/Motif', [
-            'motifs' => $motifData,
-            'filters' => [
-                'category' => $request->category,
-                'search' => $request->search,
-            ]
-        ]);
-    }
-
-    public function getForEditor(): JsonResponse
-    {
-        Log::info('=== GET MOTIFS FOR EDITOR ===');
-        
         try {
+            \Log::info('=== FETCHING EDITOR MOTIFS ===');
+
             $motifs = Motif::where('is_active', true)
-                ->orderBy('name')
-                ->get()
-                ->map(function (Motif $motif) {
-                    // Ambil langsung dari database tanpa modifikasi
-                    // Karena path sudah lengkap: /images/motifs/xx.svg
-                    $imageUrl = $motif->image_url ?? $motif->file_path;
-                    
-                    Log::info("Motif {$motif->id}: {$motif->name} | URL: {$imageUrl}");
+                ->whereNull('user_id')
+                ->get();
 
-                    return [
-                        'id' => $motif->id,
-                        'name' => $motif->name,
-                        'description' => $motif->description ?? '',
-                        'category' => $motif->category ?? 'Uncategorized',
-                        'preview_image_path' => $imageUrl, // Langsung pakai dari DB
-                        'file_path' => $imageUrl,
-                        'image_url' => $imageUrl,
-                    ];
-                });
+            $motifsData = $motifs->map(function ($motif) {
+                $imagePath = $motif->file_path;
+                
+                // File ada di public/images/motifs/
+                // Path di database: /images/motifs/1.svg
+                // Langsung pakai path dari database, jangan tambah /storage
+                
+                if (str_starts_with($imagePath, 'http')) {
+                    $imageUrl = $imagePath;
+                } else {
+                    // Langsung gunakan path dari database
+                    $imageUrl = $imagePath;
+                }
 
-            Log::info('Total motifs: ' . $motifs->count());
+                \Log::info('Processing motif', [
+                    'id' => $motif->id,
+                    'original_path' => $motif->file_path,
+                    'processed_url' => $imageUrl
+                ]);
+
+                return [
+                    'id' => $motif->id,
+                    'name' => $motif->name,
+                    'description' => $motif->description,
+                    'category' => $motif->category,
+                    'file_path' => $imageUrl,
+                    'preview_image_path' => $imageUrl,
+                    'image_url' => $imageUrl,
+                    'is_personal' => false,
+                ];
+            });
+
+            \Log::info('Editor motifs processed successfully', [
+                'count' => $motifsData->count(),
+                'sample' => $motifsData->take(3)->toArray()
+            ]);
 
             return response()->json([
-                'motifs' => $motifs,
-                'total' => $motifs->count(),
+                'motifs' => $motifsData,
+                'count' => $motifsData->count()
             ]);
+
         } catch (\Exception $e) {
-            Log::error('Error in getForEditor: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
+            \Log::error('=== ERROR FETCHING EDITOR MOTIFS ===');
+            \Log::error('Message: ' . $e->getMessage());
+            \Log::error('Trace: ' . $e->getTraceAsString());
             
             return response()->json([
                 'motifs' => [],
-                'total' => 0,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'message' => 'Failed to fetch motifs'
             ], 500);
         }
     }
 
-    public function storeFromAi(Request $request)
+    /**
+     * Display a listing of the resource.
+     */
+    public function index()
+    {
+        $motifs = Motif::where('is_active', true)
+            ->whereNull('user_id')
+            ->paginate(20);
+
+        return Inertia::render('Admin/Motifs/Index', [
+            'motifs' => $motifs
+        ]);
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(Request $request)
     {
         try {
-            $request->validate([
-                'image' => 'required|string',
+            \Log::info('=== UPLOAD MOTIF REQUEST ===');
+            \Log::info('Request data:', $request->all());
+            \Log::info('Has file:', ['has_file' => $request->hasFile('file')]);
+
+            $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
-                'prompt' => 'nullable|string',
+                'description' => 'nullable|string',
+                'category' => 'required|string|max:100',
+                'file' => 'required|file|mimes:svg|max:2048',
             ]);
 
-            $imageData = $request->image;
-            if (preg_match('/^data:image\/(\w+);base64,/', $imageData, $type)) {
-                $imageData = substr($imageData, strpos($imageData, ',') + 1);
-                $type = strtolower($type[1]);
-
-                $imageData = base64_decode($imageData);
-                $fileName = 'ai_' . time() . '.' . $type;
-                
-                $path = 'motifs/' . $fileName;
-                Storage::disk('public')->put($path, $imageData);
-                $publicUrl = Storage::url($path);
-
-                $motif = Motif::create([
-                    'name' => $request->name,
-                    'description' => $request->prompt ?? 'AI Generated Motif',
-                    'category' => 'AI Generated',
-                    'file_path' => $publicUrl,
-                    'image_url' => $publicUrl,
-                    'user_id' => Auth::id(),
-                    'is_active' => true,
-                ]);
-
+            if ($validator->fails()) {
+                \Log::error('Validation failed:', $validator->errors()->toArray());
                 return response()->json([
-                    'message' => 'Motif AI berhasil disimpan',
-                    'motif' => [
-                        'id' => $motif->id,
-                        'name' => $motif->name,
-                        'preview_image_path' => $publicUrl,
-                        'image_url' => $publicUrl,
-                    ]
-                ]);
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
             }
 
-            throw new \Exception('Invalid image format');
-        } catch (\Exception $e) {
-            Log::error('Error in storeFromAi: ' . $e->getMessage());
+            if (!$request->hasFile('file')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No file uploaded'
+                ], 400);
+            }
+
+            $file = $request->file('file');
+            
+            \Log::info('File info:', [
+                'original_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType(),
+                'size' => $file->getSize()
+            ]);
+
+            // Generate unique filename
+            $filename = time() . '_' . Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)) . '.svg';
+            
+            // Simpan file ke public/images/motifs
+            $path = $file->move(public_path('images/motifs'), $filename);
+            
+            // Path untuk disimpan di database
+            $filePath = '/images/motifs/' . $filename;
+
+            \Log::info('File saved:', [
+                'physical_path' => $path,
+                'db_path' => $filePath
+            ]);
+
+            // Simpan ke database
+            $motif = Motif::create([
+                'name' => $request->name,
+                'description' => $request->description,
+                'category' => $request->category,
+                'file_path' => $filePath,
+                'image_url' => $filePath,
+                'preview_image_path' => $filePath,
+                'user_id' => Auth::id(),
+                'is_active' => true,
+            ]);
+
+            \Log::info('Motif created:', $motif->toArray());
+
             return response()->json([
-                'message' => 'Gagal menyimpan motif',
+                'success' => true,
+                'message' => 'Motif berhasil diunggah',
+                'motif' => [
+                    'id' => $motif->id,
+                    'name' => $motif->name,
+                    'description' => $motif->description,
+                    'category' => $motif->category,
+                    'file_path' => $filePath,
+                    'image_url' => $filePath,
+                    'preview_image_path' => $filePath,
+                    'is_personal' => true,
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            \Log::error('=== ERROR UPLOADING MOTIF ===');
+            \Log::error('Message: ' . $e->getMessage());
+            \Log::error('Trace: ' . $e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat mengunggah motif',
                 'error' => $e->getMessage()
             ], 500);
         }

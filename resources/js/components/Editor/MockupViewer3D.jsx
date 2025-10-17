@@ -226,6 +226,14 @@ function MockupViewer3D({ patternUrl, canvasWidth = 800, canvasHeight = 600 }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Debug log saat component mount
+    useEffect(() => {
+        console.log('=== MOCKUP VIEWER 3D PROPS ===');
+        console.log('Canvas Width:', canvasWidth);
+        console.log('Canvas Height:', canvasHeight);
+        console.log('Pattern URL length:', patternUrl?.length || 0);
+    }, [canvasWidth, canvasHeight, patternUrl]);
+
     const handleModelReady = useCallback(() => {
         console.log('Model ready, hiding loading indicator');
         setLoading(false);
@@ -262,6 +270,9 @@ function MockupViewer3D({ patternUrl, canvasWidth = 800, canvasHeight = 600 }) {
             <div className="absolute top-4 right-4 z-50 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md">
                 <p className="text-xs font-medium text-gray-700">
                     Canvas: {canvasWidth} × {canvasHeight}px
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                    Pattern: {patternUrl ? 'Loaded' : 'No pattern'}
                 </p>
             </div>
 

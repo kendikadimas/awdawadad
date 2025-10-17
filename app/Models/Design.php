@@ -12,15 +12,19 @@ class Design extends Model
 
     protected $fillable = [
         'title',
-        'description',
+        // 'description',
         'image_url',
         'canvas_data',
+        'canvas_width',
+        'canvas_height',
         'user_id',
         'preview_3d_models_id',
     ];
 
     protected $casts = [
         'canvas_data' => 'array', // Otomatis konversi JSON ke array
+        'canvas_width' => 'integer',
+        'canvas_height' => 'integer',
     ];
 
     public function user(): BelongsTo

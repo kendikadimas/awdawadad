@@ -39,9 +39,6 @@ Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function ()
 
     // Motif routes
     Route::get('/motif', [MotifController::class, 'index'])->name('motif');
-    Route::get('/api/motifs/editor', [MotifController::class, 'getForEditor'])->name('motifs.editor');
-    Route::get('/api/user-motifs', [UserMotifController::class, 'index'])->name('motifs.user.index');
-    Route::post('/api/user-motifs', [UserMotifController::class, 'store'])->name('motifs.user.store');
     Route::post('/motifs/ai', [MotifController::class, 'storeFromAi'])->name('motifs.store.ai');
     Route::post('/designs/ai', [DesignController::class, 'storeFromAi'])->name('designs.store.ai');
 
@@ -92,3 +89,10 @@ Route::prefix('api')->group(function () {
 
 // Memuat semua rute autentikasi (login, register, logout, dll.)
 require __DIR__.'/auth.php';
+
+Route::middleware('auth')->group(function () {
+    // API Motif routes
+    Route::get('/api/motifs/editor', [MotifController::class, 'editor'])->name('motifs.editor');
+    Route::get('/api/user-motifs', [UserMotifController::class, 'index'])->name('motifs.user.index');
+    Route::post('/api/user-motifs', [UserMotifController::class, 'store'])->name('motifs.user.store');
+});

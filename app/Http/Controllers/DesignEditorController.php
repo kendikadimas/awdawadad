@@ -13,15 +13,8 @@ class DesignEditorController extends Controller
      */
     public function create(Request $request)
     {
-        $canvasWidth = max(200, (int) $request->query('width', 800));
-        $canvasHeight = max(200, (int) $request->query('height', 600));
-
         return Inertia::render('Editor/DesignEditor', [
             'initialDesign' => null,
-            'canvasSize' => [
-                'width' => $canvasWidth,
-                'height' => $canvasHeight,
-            ],
         ]);
     }
 
@@ -36,12 +29,37 @@ class DesignEditorController extends Controller
         }
 
         // Decode canvas_data jika berupa string JSON
-        if (is_string($design->canvas_data)) {
-            $design->canvas_data = json_decode($design->canvas_data, true);
+        $canvasData = $design->canvas_data;
+        if (is_string($canvasData)) {
+            $canvasData = json_decode($canvasData, true);
         }
 
+        // ✅ PERBAIKAN: Pastikan canvas_width dan canvas_height adalah integer
+        $canvasWidth = (int) ($design->canvas_width ?? 800);
+        $canvasHeight = (int) ($design->canvas_height ?? 600);
+
+        \Log::info('Loading design for edit', [
+            'design_id' => $design->id,
+            'canvas_width' => $canvasWidth,
+            'canvas_height' => $canvasHeight,
+            'raw_width' => $design->canvas_width,
+            'raw_height' => $design->canvas_height,
+        ]);
+
+        $initialDesign = [
+            'id' => $design->id,
+            'title' => $design->title,
+            'description' => $design->description,
+            'canvas_data' => $canvasData ?? [],
+            'canvas_width' => $canvasWidth,
+            'canvas_height' => $canvasHeight,
+            'image_url' => $design->image_url,
+            'created_at' => $design->created_at->toISOString(),
+            'updated_at' => $design->updated_at->toISOString(),
+        ];
+
         return Inertia::render('Editor/DesignEditor', [
-            'initialDesign' => $design
+            'initialDesign' => $initialDesign,
         ]);
     }
 }

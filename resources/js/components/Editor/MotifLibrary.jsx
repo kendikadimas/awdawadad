@@ -38,8 +38,11 @@ export default function MotifLibrary({ motifs = [], loading = false, uploading =
                                 className="hidden"
                                 onChange={(e) => {
                                     const file = e.target.files?.[0];
-                                    if (file) onUpload(file);
-                                    e.target.value = '';
+                                    if (file) {
+                                        console.log('File selected:', file);
+                                        onUpload(file);
+                                    }
+                                    e.target.value = ''; // Reset input
                                 }}
                             />
                             {uploading ? (
@@ -143,11 +146,11 @@ export default function MotifLibrary({ motifs = [], loading = false, uploading =
                         >
                             <div className="relative">
                                 <img 
-                                    src={motif.preview_image_path} 
+                                    src={motif.image_url} 
                                     alt={motif.name} 
                                     className="w-full h-20 object-cover rounded group-hover:scale-105 transition-transform"
                                     onError={(e) => {
-                                        console.error('Failed to load image:', motif.preview_image_path);
+                                        console.error('Failed to load image:', motif.image_url);
                                         e.target.src = '/images/placeholder-motif.svg';
                                     }}
                                 />

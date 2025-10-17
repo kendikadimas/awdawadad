@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download } from 'lucide-react';
 import MockupViewer3D from '@/components/Editor/MockupViewer3D';
 import MotifLibrary from '@/components/Editor/MotifLibrary';
 import CanvasArea from '@/components/Editor/CanvasArea';
@@ -19,30 +19,79 @@ function downloadURI(uri, name) {
 }
 
 export default function DesignEditor({ initialDesign }) {
-    // Parse query string untuk mendapatkan width & height
     const { url } = usePage();
-    const urlParams = new URLSearchParams(url.split('?')[1]);
-    const queryWidth = parseInt(urlParams.get('width')) || 800;
-    const queryHeight = parseInt(urlParams.get('height')) || 600;
+    
+    // ✅ FIX: Parse initialDesign dengan benar
+    useEffect(() => {
+        console.log('========== DEBUG INITIAL DESIGN ==========');
+        console.log('Raw initialDesign:', initialDesign);
+        console.log('Type:', typeof initialDesign);
+        console.log('canvas_width:', initialDesign?.canvas_width);
+        console.log('canvas_height:', initialDesign?.canvas_height);
+        console.log('==========================================');
+    }, [initialDesign]);
 
-    const defaultSize = {
-        width: queryWidth,
-        height: queryHeight,
+    const urlParams = new URLSearchParams(url.split('?')[1]);
+    
+    // ✅ FIX: Jangan gunakan useMemo, langsung compute
+    const defaultSize = (() => {
+        // Mode EDIT - Ambil dari initialDesign
+        if (initialDesign && initialDesign.id) {
+            const width = parseInt(initialDesign.canvas_width) || 800;
+            const height = parseInt(initialDesign.canvas_height) || 600;
+            
+            console.log('🔵 EDIT MODE - Loading existing design');
+            console.log('Design ID:', initialDesign.id);
+            console.log('Canvas Width (DB):', initialDesign.canvas_width, '→', width);
+            console.log('Canvas Height (DB):', initialDesign.canvas_height, '→', height);
+            
+            return { width, height };
+        }
+        
+        // Mode CREATE - Ambil dari URL params
+        const width = parseInt(urlParams.get('width')) || 800;
+        const height = parseInt(urlParams.get('height')) || 600;
+        
+        console.log('🟢 CREATE MODE - New design');
+        console.log('Canvas Width (URL):', urlParams.get('width'), '→', width);
+        console.log('Canvas Height (URL):', urlParams.get('height'), '→', height);
+        
+        return { width, height };
+    })();
+
+    console.log('✅ FINAL defaultSize:', defaultSize);
+
+    // Parse canvas_data dengan benar
+    const parseCanvasData = (data) => {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        if (typeof data === 'string') {
+            try {
+                return JSON.parse(data);
+            } catch (e) {
+                console.error('Failed to parse canvas_data:', e);
+                return [];
+            }
+        }
+        return [];
     };
 
-    console.log('=== CANVAS SIZE ===');
-    console.log('Query Width:', queryWidth);
-    console.log('Query Height:', queryHeight);
-    console.log('Default Size:', defaultSize);
-
-    // State utama aplikasi editor 
-    const [canvasObjects, setCanvasObjects] = useState(initialDesign?.canvas_data || []);
+    // State utama aplikasi editor - LOAD dari initialDesign
+    const [canvasObjects, setCanvasObjects] = useState(() => {
+        const parsed = parseCanvasData(initialDesign?.canvas_data);
+        console.log('🎨 Loading canvas objects:', parsed.length, 'items');
+        return Array.isArray(parsed) ? parsed : []; // ✅ Pastikan selalu array
+    });
+    
     const [selectedId, setSelectedId] = useState(null);
     const [designName, setDesignName] = useState(initialDesign?.title || 'Desain Batik Baru');
     const [isSaving, setIsSaving] = useState(false);
+    
+    // State untuk motifs
     const [motifs, setMotifs] = useState([]);
     const [loadingMotifs, setLoadingMotifs] = useState(true);
-    
+    const [uploadingMotif, setUploadingMotif] = useState(false); // ✅ Tambahkan state ini
+
     // Tool states
     const [activeTool, setActiveTool] = useState('move');
     const [isDrawing, setIsDrawing] = useState(false);
@@ -59,7 +108,6 @@ export default function DesignEditor({ initialDesign }) {
     });
     
     // Other states
-    const [uploadingMotif, setUploadingMotif] = useState(false);
     const [showGrid, setShowGrid] = useState(true);
     const [snapToGrid, setSnapToGrid] = useState(true);
     const [pointer, setPointer] = useState({ x: 0, y: 0 });
@@ -74,80 +122,71 @@ export default function DesignEditor({ initialDesign }) {
         fetchMotifs();
     }, []);
 
+    // Fetch motifs dari server
     const fetchMotifs = async () => {
         try {
-            setLoadingMotifs(true);
             console.log('=== FETCHING MOTIFS ===');
-            console.log('Route motifs.editor:', route('motifs.editor'));
-            console.log('Route motifs.user.index:', route('motifs.user.index'));
-            
+            setLoadingMotifs(true);
+
             // Fetch global motifs
-            console.log('Fetching global motifs...');
-            const globalResponse = await fetch(route('motifs.editor'), {
+            const globalUrl = '/api/motifs/editor'; // ✅ Langsung pakai URL
+            console.log('Fetching global motifs from:', globalUrl);
+
+            const globalResponse = await fetch(globalUrl, {
                 headers: {
                     'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'same-origin'
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                }
             });
-            
+
             console.log('Global response status:', globalResponse.status);
-            console.log('Global response ok:', globalResponse.ok);
-            
-            let globalMotifs = [];
-            if (globalResponse.ok) {
-                const globalData = await globalResponse.json();
-                console.log('Global motifs data:', globalData);
-                console.log('Global motifs count:', globalData.motifs?.length || 0);
-                globalMotifs = globalData.motifs || [];
-            } else {
-                console.warn('Failed to fetch global motifs');
+
+            if (!globalResponse.ok) {
+                throw new Error(`Global motifs fetch failed: ${globalResponse.status}`);
             }
-            
-            // Fetch personal motifs - JANGAN BIARKAN ERROR MENGHENTIKAN PROSES
-            console.log('Fetching personal motifs...');
-            let personalMotifs = [];
+
+            const globalData = await globalResponse.json();
+            console.log('Global motifs data:', globalData);
+            console.log('Global motifs count:', globalData?.motifs?.length || 0);
+
+            let allMotifs = globalData?.motifs || [];
+
+            // Fetch user motifs
             try {
-                const personalResponse = await fetch(route('motifs.user.index'), {
+                const userUrl = '/api/user-motifs'; // ✅ Langsung pakai URL
+                console.log('Fetching personal motifs from:', userUrl);
+                
+                const userResponse = await fetch(userUrl, {
                     headers: {
                         'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'same-origin'
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    }
                 });
-                
-                console.log('Personal response status:', personalResponse.status);
-                console.log('Personal response ok:', personalResponse.ok);
-                
-                if (personalResponse.ok) {
-                    const personalData = await personalResponse.json();
-                    console.log('Personal motifs data:', personalData);
-                    console.log('Personal motifs count:', personalData.motifs?.length || 0);
-                    personalMotifs = personalData.motifs || [];
-                } else {
-                    console.warn('Failed to fetch personal motifs, using only global motifs');
+
+                console.log('Personal response status:', userResponse.status);
+
+                if (userResponse.ok) {
+                    const userData = await userResponse.json();
+                    console.log('Personal motifs data:', userData);
+                    console.log('Personal motifs count:', userData?.motifs?.length || 0);
+
+                    const personalMotifs = userData?.motifs || [];
+                    allMotifs = [...allMotifs, ...personalMotifs];
                 }
-            } catch (personalError) {
-                console.warn('Personal motifs error (non-critical):', personalError.message);
-                // Lanjutkan dengan global motifs saja
+            } catch (userError) {
+                console.warn('Failed to fetch user motifs:', userError);
+                // Continue with global motifs only
             }
-            
-            // Combine motifs
-            const allMotifs = [...globalMotifs, ...personalMotifs];
-            
+
             console.log('=== MOTIFS LOADED ===');
             console.log('Total motifs:', allMotifs.length);
-            console.log('Global:', globalMotifs.length, 'Personal:', personalMotifs.length);
-            
+
             if (allMotifs.length > 0) {
                 console.log('First motif sample:', allMotifs[0]);
-            } else {
-                console.warn('No motifs found!');
             }
-            
+
             setMotifs(allMotifs);
+
         } catch (error) {
             console.error('=== ERROR FETCHING MOTIFS ===');
             console.error('Error message:', error.message);
@@ -159,91 +198,194 @@ export default function DesignEditor({ initialDesign }) {
         }
     };
 
-    const handleMotifUpload = async (file) => {
-        if (!file) return;
+    // Upload motif user
+    // Di bagian handleUploadMotif, ubah seperti ini:
+const handleUploadMotif = async (file) => {
+    try {
+        console.log('=== UPLOADING MOTIF ===');
+        console.log('File:', file);
         
-        console.log('Uploading motif:', file.name);
+        setUploadingMotif(true);
+
+        if (!file) {
+            throw new Error('File tidak valid');
+        }
+
+        const motifName = prompt('Masukkan nama motif:', file.name.replace(/\.[^/.]+$/, ''));
         
+        if (!motifName) {
+            setUploadingMotif(false);
+            return;
+        }
+
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('name', file.name);
-        
-        try {
-            setUploadingMotif(true);
-            
-            // Get CSRF token
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            console.log('CSRF Token:', csrfToken);
-            
-            const response = await fetch(route('motifs.user.store'), {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json',
-                },
-                body: formData,
-                credentials: 'same-origin'
-            });
-            
-            console.log('Upload response status:', response.status);
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error('Upload error data:', errorData);
-                throw new Error(errorData.message || 'Upload failed');
-            }
-            
-            const data = await response.json();
-            console.log('Uploaded motif:', data.motif);
-            
-            setMotifs((prev) => [...prev, data.motif]);
-            alert('Motif berhasil diunggah!');
-        } catch (error) {
-            console.error('Upload error:', error);
-            alert('Gagal mengunggah motif: ' + error.message);
-        } finally {
-            setUploadingMotif(false);
+        formData.append('name', motifName);
+        formData.append('description', 'Motif pribadi');
+        formData.append('category', 'Personal');
+
+        console.log('FormData entries:');
+        for (let pair of formData.entries()) {
+            console.log(pair[0], pair[1]);
         }
-    };
+
+        // ✅ FIX: Ambil CSRF token dengan cara yang benar
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+        
+        console.log('CSRF Token:', csrfToken ? 'Found' : 'Missing');
+        console.log('Uploading to: /api/user-motifs');
+
+        // Upload ke server
+        const response = await fetch('/api/user-motifs', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest', // ✅ Tambahkan ini
+                'Accept': 'application/json',
+            },
+            body: formData,
+            credentials: 'same-origin', // ✅ Tambahkan ini
+        });
+
+        console.log('Upload response status:', response.status);
+        console.log('Upload response headers:', {
+            contentType: response.headers.get('content-type'),
+            status: response.status,
+            statusText: response.statusText
+        });
+
+        // ✅ Cek apakah response adalah JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error('Response is not JSON:', text.substring(0, 500));
+            throw new Error(`Server mengembalikan HTML (${response.status}). Mungkin session expired atau CSRF token tidak valid.`);
+        }
+
+        const result = await response.json();
+        console.log('Upload response data:', result);
+
+        if (!response.ok) {
+            throw new Error(result.message || `Upload failed: ${response.status}`);
+        }
+
+        if (result.success && result.motif) {
+            setMotifs(prevMotifs => [...prevMotifs, result.motif]);
+            alert('Motif berhasil diunggah!');
+            await fetchMotifs();
+        } else {
+            throw new Error(result.message || 'Response tidak valid');
+        }
+
+    } catch (error) {
+        console.error('=== UPLOAD ERROR ===');
+        console.error('Error:', error);
+        console.error('Error message:', error.message);
+        
+        // ✅ Tampilkan error yang lebih jelas
+        let errorMessage = error.message;
+        if (error.message.includes('Unexpected token')) {
+            errorMessage = 'Session expired atau CSRF token tidak valid. Silakan refresh halaman.';
+        }
+        
+        alert('Terjadi kesalahan saat mengunggah motif: ' + errorMessage);
+    } finally {
+        setUploadingMotif(false);
+    }
+};
 
     // Fungsi untuk menyimpan desain ke database
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!stageRef.current) return;
-        setIsSaving(true);
 
-        // 1. Generate thumbnail dari canvas
-        const thumbnail = stageRef.current.toDataURL({
-            mimeType: 'image/jpeg',
-            quality: 0.8,
-            pixelRatio: 1,
-        });
+        try {
+            setIsSaving(true);
 
-        const designData = {
-            title: designName,
-            canvas_data: canvasObjects,
-            thumbnail: thumbnail,
-            canvas_width: defaultSize.width,
-            canvas_height: defaultSize.height,
-        };
+            // Generate thumbnail
+            const layer = stageRef.current.findOne('Layer');
+            const tempStage = new window.Konva.Stage({
+                container: document.createElement('div'),
+                width: defaultSize.width,
+                height: defaultSize.height,
+            });
 
-        // 2. Tentukan rute dan metode (buat baru atau update)
-        const url = initialDesign ? `/designs/${initialDesign.id}` : '/designs';
-        const method = initialDesign ? 'put' : 'post';
+            const tempLayer = new window.Konva.Layer();
+            tempStage.add(tempLayer);
 
-        // 3. Kirim data ke backend dan arahkan ke dashboard setelah selesai
-        router[method](url, designData, {
-            onSuccess: () => {
-                alert('Desain berhasil disimpan!');
-            },
-            onError: (errors) => {
-                console.error('Gagal menyimpan:', errors);
-                alert('Gagal menyimpan desain.');
-            },
-            onFinish: () => {
-                setIsSaving(false);
-            },
-        });
+            layer.getChildren().forEach((node) => {
+                if (node.getClassName() === 'Transformer') return;
+                if (node.getAttr('listening') === false && node.getClassName() === 'Line') return;
+                
+                const clone = node.clone();
+                tempLayer.add(clone);
+            });
+
+            tempLayer.batchDraw();
+
+            const thumbnail = tempStage.toDataURL({
+                x: 0,
+                y: 0,
+                width: defaultSize.width,
+                height: defaultSize.height,
+                mimeType: 'image/jpeg',
+                quality: 0.8,
+                pixelRatio: 1
+            });
+
+            tempStage.destroy();
+
+            const payload = {
+                title: designName,
+                description: 'Desain batik custom',
+                canvas_data: canvasObjects,
+                canvas_width: defaultSize.width,
+                canvas_height: defaultSize.height,
+                thumbnail: thumbnail,
+            };
+
+            console.log('=== SAVING DESIGN ===');
+            console.log('Payload:', payload);
+            console.log('Canvas Width:', payload.canvas_width);
+            console.log('Canvas Height:', payload.canvas_height);
+            console.log('Canvas Data count:', payload.canvas_data.length);
+
+            if (initialDesign?.id) {
+                console.log('Updating design ID:', initialDesign.id);
+                await router.put(`/designs/${initialDesign.id}`, payload, {
+                    preserveState: false,
+                    preserveScroll: false,
+                    onSuccess: () => {
+                        setIsSaving(false); // ✅ FIX
+                        alert('Desain berhasil disimpan!');
+                    },
+                    onError: (errors) => {
+                        console.error('Save errors:', errors);
+                        setIsSaving(false); // ✅ FIX
+                        alert('Gagal menyimpan: ' + Object.values(errors).join(', '));
+                    }
+                });
+            } else {
+                console.log('Creating new design');
+                await router.post('/designs', payload, {
+                    preserveState: false,
+                    preserveScroll: false,
+                    onSuccess: () => {
+                        setIsSaving(false); // ✅ FIX
+                        alert('Desain berhasil disimpan!');
+                    },
+                    onError: (errors) => {
+                        console.error('Save errors:', errors);
+                        setIsSaving(false); // ✅ FIX
+                        alert('Gagal menyimpan: ' + Object.values(errors).join(', '));
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error saving design:', error);
+            console.error('Error details:', error.response?.data);
+            setIsSaving(false); // ✅ FIX
+            alert('Gagal menyimpan desain: ' + (error.response?.data?.message || error.message));
+        }
     };
 
     // Fungsi untuk membersihkan semua objek dari canvas
@@ -257,14 +399,54 @@ export default function DesignEditor({ initialDesign }) {
     const handleShow3D = () => {
         if (!stageRef.current) return;
 
-        const patternDataURL = stageRef.current.toDataURL({
+        // Dapatkan layer yang berisi canvas
+        const stage = stageRef.current;
+        const layer = stage.findOne('Layer');
+        
+        if (!layer) {
+            console.error('Layer not found');
+            return;
+        }
+
+        // Buat stage baru temporary hanya untuk export
+        const tempStage = new window.Konva.Stage({
+            container: document.createElement('div'),
+            width: defaultSize.width,
+            height: defaultSize.height,
+        });
+
+        const tempLayer = new window.Konva.Layer();
+        tempStage.add(tempLayer);
+
+        // Clone semua objek dari layer asli ke temp layer
+        layer.getChildren().forEach((node) => {
+            // Skip transformer dan grid
+            if (node.getClassName() === 'Transformer') return;
+            if (node.getAttr('listening') === false && node.getClassName() === 'Line') return; // Skip grid lines
+            
+            const clone = node.clone();
+            tempLayer.add(clone);
+        });
+
+        tempLayer.batchDraw();
+
+        // Export hanya area canvas putih
+        const patternDataURL = tempStage.toDataURL({
             x: 0,
             y: 0,
             width: defaultSize.width,
             height: defaultSize.height,
             mimeType: 'image/png',
-            pixelRatio: 1
+            pixelRatio: 2 // Higher quality
         });
+
+        // Cleanup
+        tempStage.destroy();
+
+        console.log('=== EXPORTING PATTERN FOR 3D ===');
+        console.log('Canvas size:', defaultSize.width, 'x', defaultSize.height);
+        console.log('Pattern data URL length:', patternDataURL.length);
+
         setPatternFor3D(patternDataURL);
         setShow3DModal(true);
     };
@@ -396,10 +578,91 @@ export default function DesignEditor({ initialDesign }) {
         setCurrentTool(activeTool);
     }, [activeTool]);
 
+    // Tambahkan state untuk dropdown download
+    const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+
+    // Tambahkan fungsi download (setelah handleSave)
+    const handleDownload = (format) => {
+        if (!stageRef.current) return;
+
+        const stage = stageRef.current;
+        const layer = stage.findOne('Layer');
+        
+        if (!layer) {
+            alert('Canvas tidak ditemukan');
+            return;
+        }
+
+        // Buat stage temporary untuk export
+        const tempStage = new window.Konva.Stage({
+            container: document.createElement('div'),
+            width: defaultSize.width,
+            height: defaultSize.height,
+        });
+
+        const tempLayer = new window.Konva.Layer();
+        tempStage.add(tempLayer);
+
+        // Clone semua objek
+        layer.getChildren().forEach((node) => {
+            if (node.getClassName() === 'Transformer') return;
+            if (node.getAttr('listening') === false && node.getClassName() === 'Line') return;
+            
+            const clone = node.clone();
+            tempLayer.add(clone);
+        });
+
+        tempLayer.batchDraw();
+
+        const fileName = `${designName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}`;
+
+        try {
+            if (format === 'png') {
+                // Export sebagai PNG (Lossless, Support Transparansi)
+                const dataURL = tempStage.toDataURL({
+                    mimeType: 'image/png',
+                    quality: 1,
+                    pixelRatio: 3 // ✅ Higher quality untuk print
+                });
+                downloadURI(dataURL, `${fileName}.png`);
+            } else if (format === 'jpg') {
+                // Export sebagai JPG (Kompres, Background Putih)
+                const dataURL = tempStage.toDataURL({
+                    mimeType: 'image/jpeg',
+                    quality: 0.95,
+                    pixelRatio: 3 // ✅ Higher quality
+                });
+                downloadURI(dataURL, `${fileName}.jpg`);
+            }
+
+            console.log(`✅ Download ${format.toUpperCase()} berhasil:`, fileName);
+            setShowDownloadMenu(false);
+            
+        } catch (error) {
+            console.error('Error downloading:', error);
+            alert('Gagal mengunduh desain: ' + error.message);
+        } finally {
+            tempStage.destroy();
+        }
+    };
+
+    // Tambahkan setelah useEffect yang sudah ada
+useEffect(() => {
+    const handleClickOutside = (event) => {
+        if (showDownloadMenu && !event.target.closest('.relative')) {
+            setShowDownloadMenu(false);
+        }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+}, [showDownloadMenu]);
+
     return (
         <>
             <Head title="Editor Desain Batik" />
             <div className="flex flex-col h-screen bg-white font-sans">
+                {/* Header - tetap sama */}
                 <header className="flex items-center justify-between px-8 py-5 bg-white border b rounded-b-xl">
                     <div className="flex items-center gap-3">
                         <Link 
@@ -424,6 +687,41 @@ export default function DesignEditor({ initialDesign }) {
                             className="border border-[#D2691E] rounded-lg px-4 py-2 text-base text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D2691E] w-56 shadow"
                             placeholder="Nama desain"
                         />
+                        
+                        {/* Tombol Download dengan Dropdown */}
+                        <div className="relative">
+                            <button 
+                                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold shadow"
+                            >
+                                <Download className="w-5 h-5" />
+                                Unduh
+                            </button>
+                            
+                            {showDownloadMenu && (
+                                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                                    <button
+                                        onClick={() => handleDownload('png')}
+                                        className="w-full text-left px-4 py-3 hover:bg-gray-100 transition rounded-t-lg"
+                                    >
+                                        <div className="font-semibold text-gray-700">PNG</div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Kualitas tinggi, support transparansi (Recommended)
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => handleDownload('jpg')}
+                                        className="w-full text-left px-4 py-3 hover:bg-gray-100 transition rounded-b-lg"
+                                    >
+                                        <div className="font-semibold text-gray-700">JPG</div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            File lebih kecil, background putih
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
                         <button 
                             onClick={handleShow3D} 
                             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold shadow"
@@ -435,76 +733,117 @@ export default function DesignEditor({ initialDesign }) {
                             onClick={handleSave}
                             disabled={isSaving}
                             className={`px-4 py-2 rounded-lg transition font-semibold shadow ${
-                                isSaving 
-                                    ? 'bg-gray-400 text-white cursor-not-allowed' 
-                                    : 'bg-[#D2691E] hover:bg-[#A0522D] text-white'
+                                isSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-[#D2691E] hover:bg-[#BA682A] text-white'
                             }`}
                         >
-                            {isSaving ? 'Menyimpan...' : 'Simpan'}
+                            {isSaving ? 'Menyimpan...' : 'Simpan Desain'}
                         </button>
                     </div>
-                </header>   
-                <div className="flex flex-grow overflow-hidden gap-4 px-6 py-4">
-                    {/* Sidebar Kiri */}
-                    <aside className="w-64 bg-white rounded-xl overflow-y-auto shadow-lg p-4 flex flex-shrink-0 border border-[#F3EDE7]">
-                        <MotifLibrary 
-                            motifs={motifs} 
-                            loading={loadingMotifs}
-                            uploading={uploadingMotif}
-                            onRefresh={fetchMotifs}
-                            onUpload={handleMotifUpload}
-                        />
-                    </aside>
-                    {/* Area Canvas */}
-                    <main className="flex-1 flex bg-gray-100 rounded-xl shadow-lg border border-[#F3EDE7] items-center justify-center overflow-hidden">
-                        <CanvasArea 
-                            objects={canvasObjects} 
-                            setObjects={setCanvasObjects}
-                            selectedId={selectedId}
-                            setSelectedId={setSelectedId}
-                            stageRef={stageRef}
-                            canvasWidth={defaultSize.width}
-                            canvasHeight={defaultSize.height}
-                            showGrid={showGrid}
-                            snapToGrid={snapToGrid}
-                        />
-                    </main>
-                    {/* Sidebar Kanan */}
-                    <aside className="w-72 bg-white rounded-xl shadow-lg p-4 flex flex-col flex-shrink-0 border border-[#F3EDE7]">
-                        <PropertiesToolbar 
-                            activeTool={activeTool}
-                            setActiveTool={setActiveTool}
-                            brushColor={brushColor}
-                            setBrushColor={setBrushColor}
-                            brushWidth={brushWidth}
-                            setBrushWidth={setBrushWidth}
-                            eraserWidth={eraserWidth}
-                            setEraserWidth={setEraserWidth}
-                            selectedObject={selectedObject}
-                            onUpdate={updateObjectProperties}
-                        />
-                        <div className="mt-auto pt-4">
-                            <LayerPanel
-                                objects={canvasObjects}
-                                selectedId={selectedId}
-                                onSelect={setSelectedId}
-                                onClear={handleClearCanvas}
+                </header>
+                
+                {/* Main Content - 3 kolom: Motif | Canvas | Properties */}
+                <div className="flex-1 flex overflow-hidden">
+                    {/* LEFT SIDEBAR - Pustaka Motif */}
+                    <aside className="w-64 bg-[#FAFAFA] border-r flex flex-col overflow-hidden">
+                        <div className="p-4 flex-1 overflow-y-auto">
+                            <MotifLibrary 
+                                motifs={motifs} 
+                                loading={loadingMotifs}
+                                uploading={uploadingMotif}
+                                onRefresh={fetchMotifs}
+                                onUpload={handleUploadMotif}
                             />
                         </div>
                     </aside>
+                    
+                    {/* CENTER - Canvas Area dengan Toolbar */}
+                    <div className="flex-1 flex flex-col bg-gray-50">
+                        {/* Canvas Container */}
+                        <div className="flex-1 p-4">
+                            <CanvasArea 
+                                canvasObjects={canvasObjects || []}
+                                setCanvasObjects={setCanvasObjects}
+                                selectedId={selectedId}
+                                setSelectedId={setSelectedId}
+                                stageRef={stageRef}
+                                pointer={pointer}
+                                setPointer={setPointer}
+                                activeBrush={activeBrush}
+                                isDrawing={isDrawing}
+                                setIsDrawing={setIsDrawing}
+                                currentTool={currentTool}
+                                showGrid={showGrid}
+                                snapToGrid={snapToGrid}
+                                onDrop={handleDrop}
+                                defaultSize={defaultSize}
+                                brushColor={brushColor}
+                                setBrushColor={setBrushColor}
+                                brushWidth={brushWidth}
+                                setBrushWidth={setBrushWidth}
+                                eraserWidth={eraserWidth}
+                                setEraserWidth={setEraserWidth}
+                                activeTool={activeTool}
+                                setActiveTool={setActiveTool}
+                            />
+                        </div>
+                    </div>
+                    
+                    {/* RIGHT SIDEBAR - Properties & Layers */}
+                    <aside className="w-72 bg-white border-l flex flex-col overflow-hidden">
+                        <div className="p-4 flex-1 overflow-y-auto space-y-6">
+                            {/* Properties Section */}
+                            <div className="bg-[#FAFAFA] rounded-lg p-4 border">
+                                <PropertiesToolbar 
+                                    selectedObject={selectedObject}
+                                    onUpdate={updateObjectProperties}
+                                />
+                            </div>
+                            
+                            {/* Layers Section */}
+                            <div className="bg-[#FAFAFA] rounded-lg p-4 border">
+                                <LayerPanel 
+                                    objects={canvasObjects}
+                                    selectedId={selectedId}
+                                    onSelect={setSelectedId}
+                                    onClear={handleClearCanvas}
+                                />
+                            </div>
+                        </div>
+                    </aside>
                 </div>
-
-                {/* Modal 3D */}
+                
+                {/* 3D Preview Modal - tetap sama */}
                 {show3DModal && (
-                    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-xl shadow-2xl w-3/4 h-3/4 p-6 relative flex flex-col z-50">
-                            <button 
-                                onClick={() => setShow3DModal(false)}
-                                className="absolute z-50 top-4 right-4 bg-red-500 hover:bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center shadow transition"
-                            >
-                                X
-                            </button>
-                            <MockupViewer3D patternUrl={patternFor3D} />
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-lg shadow-2xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-2xl font-bold text-[#BA682A]">Preview 3D Desain</h3>
+                                <button
+                                    onClick={() => setShow3DModal(false)}
+                                    className="p-2 hover:bg-gray-100 rounded-full transition"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
+                                <MockupViewer3D 
+                                    patternImage={patternFor3D}
+                                    canvasWidth={defaultSize.width}
+                                    canvasHeight={defaultSize.height}
+                                />
+                            </div>
+                            
+                            <div className="flex justify-end gap-3 mt-6">
+                                <button 
+                                    onClick={() => setShow3DModal(false)} 
+                                    className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-semibold"
+                                >
+                                    Tutup
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
