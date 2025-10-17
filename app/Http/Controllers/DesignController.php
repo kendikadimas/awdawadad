@@ -181,23 +181,22 @@ class DesignController extends Controller
             'image_data' => 'required|string', // Base64
         ]);
 
-        // Simpan gambar AI sebagai file (bisa untuk thumbnail & sumber gambar di canvas)
+        // Simpan gambar AI sebagai file
         $imageData = substr($request->image_data, strpos($request->image_data, ',') + 1);
         $imageData = base64_decode($imageData);
         $filename = 'designs/generated/' . Auth::id() . '_' . time() . '.jpg';
         Storage::disk('public')->put($filename, $imageData);
-        $imageUrl = Storage::url($filename);
 
-        // Buat struktur data canvas dengan gambar AI di tengah
+        // Buat struktur data canvas dengan gambar AI
         $canvasData = [
             [
                 'id' => 'obj' . time(),
-                'x' => 100, // Posisi default X
-                'y' => 100, // Posisi default Y
-                'width' => 600, // Ukuran default
+                'x' => 100,
+                'y' => 100,
+                'width' => 600,
                 'height' => 600,
                 'rotation' => 0,
-                'src' => $imageUrl,
+                'src' => Storage::url($filename), // ✅ Gunakan full URL untuk canvas
             ]
         ];
 
@@ -206,11 +205,10 @@ class DesignController extends Controller
             'canvas_data' => json_encode($canvasData),
             'canvas_width' => 800,
             'canvas_height' => 600,
-            'image_url' => $filename, // Gunakan gambar AI juga sebagai thumbnail
+            'image_url' => $filename, // ✅ Simpan path relatif untuk thumbnail
             'user_id' => Auth::id(),
         ]);
  
-        // Redirect ke dashboard dengan pesan sukses
         return redirect()->route('dashboard')->with('success', 'Desain berhasil disimpan!');
     }
 }
