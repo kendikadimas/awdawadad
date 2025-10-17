@@ -13,22 +13,27 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AdminMotifController;
+use App\Http\Controllers\Admin\AdminTransactionController;
 
-// Route halaman utama (welcome) - hanya untuk guest
+// Route halaman utama (welcome)
 Route::get('/', function () {
     if (!Auth::check()) {
         return Inertia::render('Auth/Login');
     }
 
+    // ✅ Redirect berdasarkan role
     return match (Auth::user()->role) {
+        'Admin' => redirect()->route('admin.dashboard'),
         'Convection' => redirect()->route('konveksi.dashboard'),
-        default      => redirect()->route('user.dashboard'),
+        default => redirect()->route('user.dashboard'),
     };
 });
 
-// Routes untuk General User dan Admin
-Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function () {
-    // Dashboard utama - menampilkan desain user
+// ✅ Routes untuk General User (role: General)
+Route::middleware(['auth', 'verified', 'role:General'])->group(function () {
     Route::get('/dashboard', [DesignController::class, 'index'])->name('user.dashboard');
 
     // Design routes
@@ -45,54 +50,67 @@ Route::middleware(['auth', 'verified', 'role:General,Admin'])->group(function ()
     // Menu utama
     Route::get('/konveksi', [KonveksiController::class, 'index'])->name('konveksi.index');
     Route::get('/konveksi/{konveksi}', [KonveksiController::class, 'show'])->name('konveksi.show');
-
     Route::get('/bantuan', fn () => Inertia::render('User/Bantuan'))->name('bantuan');
     Route::get('/editor', [DesignEditorController::class, 'create'])->name('editor.create');
     Route::get('/batik-generator', fn () => Inertia::render('BatikGeneratorPage'))->name('batik.generator');
     Route::get('/produksi', [ProductionController::class, 'index'])->name('production.index');
     Route::post('/produksi', [ProductionController::class, 'store'])->name('production.store');
     Route::get('/produksi/pesan', [ProductionController::class, 'create'])->name('production.create');
+    
+    // Profile
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-// Routes untuk Convection dan Admin
-Route::middleware(['auth', 'verified', 'role:Convection,Admin'])->group(function () {
-    Route::get('/konveksi/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])
-        ->name('konveksi.dashboard');
-
-    Route::get('/konveksi/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])
-        ->name('konveksi.orders');
-
-    Route::get('/konveksi/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])
-        ->name('konveksi.customers');
-
-    Route::get('/konveksi/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])
-        ->name('konveksi.income');
+// ✅ Routes untuk Konveksi (role: Convection)
+Route::middleware(['auth', 'verified', 'role:Convection'])->prefix('konveksi')->name('konveksi.')->group(function () {
+    Route::get('/dashboard', [App\Http\Controllers\Konveksi\DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/pesanan', [App\Http\Controllers\Konveksi\DashboardController::class, 'orders'])->name('orders');
+    Route::get('/pelanggan', [App\Http\Controllers\Konveksi\DashboardController::class, 'customers'])->name('customers');
+    Route::get('/penghasilan', [App\Http\Controllers\Konveksi\DashboardController::class, 'income'])->name('income');
 });
 
-// Admin routes
-Route::middleware(['auth', 'role:Admin'])->group(function () {
-    Route::get('/motifs/create', [\App\Http\Controllers\Admin\MotifController::class, 'create'])->name('motifs.create');
-    Route::post('/motifs', [\App\Http\Controllers\Admin\MotifController::class, 'store'])->name('motifs.store');
+// ✅ Routes untuk Admin (role: Admin)
+Route::middleware(['auth', 'verified', 'role:Admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+    
+    // User Management
+    Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
+    Route::put('/users/{user}/role', [AdminUserController::class, 'updateRole'])->name('users.updateRole');
+    Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+    
+    // Motif Management
+    Route::get('/motifs', [AdminMotifController::class, 'index'])->name('motifs.index');
+    Route::post('/motifs', [AdminMotifController::class, 'store'])->name('motifs.store');
+    Route::put('/motifs/{motif}', [AdminMotifController::class, 'update'])->name('motifs.update');
+    Route::delete('/motifs/{motif}', [AdminMotifController::class, 'destroy'])->name('motifs.destroy');
+    Route::put('/motifs/{motif}/toggle-status', [AdminMotifController::class, 'toggleStatus'])->name('motifs.toggleStatus');
+    
+    // Transaction Management
+    Route::get('/transactions', [AdminTransactionController::class, 'index'])->name('transactions.index');
+    Route::put('/transactions/{transaction}/status', [AdminTransactionController::class, 'updateStatus'])->name('transactions.updateStatus');
+});
+
+// ✅ Shared routes untuk semua authenticated users
+Route::middleware('auth')->group(function () {
+    // API Motif routes
+    Route::get('/api/motifs/editor', [MotifController::class, 'editor'])->name('motifs.editor');
+    Route::get('/api/user-motifs', [UserMotifController::class, 'index'])->name('motifs.user.index');
+    Route::post('/api/user-motifs', [UserMotifController::class, 'store'])->name('motifs.user.store');
+    
+    // API Batik Generator
+    Route::post('/api/batik-generator', [BatikGeneratorController::class, 'generate']);
 });
 
 // API routes
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
     return $request->user();
 });
-Route::post('/api/batik-generator', [BatikGeneratorController::class, 'generate']);
+
 Route::prefix('api')->group(function () {
     Route::get('/konveksi', [KonveksiController::class, 'apiIndex']);
 });
 
-// Memuat semua rute autentikasi (login, register, logout, dll.)
+// Auth routes
 require __DIR__.'/auth.php';
-
-Route::middleware('auth')->group(function () {
-    // API Motif routes
-    Route::get('/api/motifs/editor', [MotifController::class, 'editor'])->name('motifs.editor');
-    Route::get('/api/user-motifs', [UserMotifController::class, 'index'])->name('motifs.user.index');
-    Route::post('/api/user-motifs', [UserMotifController::class, 'store'])->name('motifs.user.store');
-});
