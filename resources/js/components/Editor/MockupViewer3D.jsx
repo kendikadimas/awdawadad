@@ -102,7 +102,7 @@ function Model({ patternUrl, cameraControlsRef, modelConfig, canvasWidth, canvas
         patternTexture.wrapT = THREE.RepeatWrapping;
         patternTexture.repeat.set(textureRepeat[0], textureRepeat[1]);
         patternTexture.offset.set(0, 0);
-        patternTexture.flipY = false;
+        patternTexture.flipY = true;
         patternTexture.magFilter = THREE.LinearFilter;
         patternTexture.minFilter = THREE.LinearMipmapLinearFilter;
         patternTexture.needsUpdate = true;

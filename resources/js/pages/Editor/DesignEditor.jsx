@@ -909,7 +909,7 @@ useEffect(() => {
                             
                             <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
                                 <MockupViewer3D 
-                                    patternImage={patternFor3D}
+                                    patternUrl={patternFor3D} // ✅ UBAH: patternImage → patternUrl
                                     canvasWidth={defaultSize.width}
                                     canvasHeight={defaultSize.height}
                                 />

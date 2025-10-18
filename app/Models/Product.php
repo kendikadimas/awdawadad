@@ -25,9 +25,16 @@ class Product extends Model
      */
     protected $fillable = [
         'name',
+        'category', // ✅ Tambahan
         'description',
         'base_price',
         'preview_3d_model_id',
+        // 'is_active'
+    ];
+
+    protected $casts = [
+        'base_price' => 'decimal:2',
+        'is_active' => 'boolean',
     ];
 
     public function preview3dModel(): BelongsTo
@@ -38,5 +45,16 @@ class Product extends Model
     public function productions(): HasMany
     {
         return $this->hasMany(Production::class);
+    }
+
+    // ✅ Helper method untuk cek kategori
+    public function isFabric()
+    {
+        return $this->category === 'fabric';
+    }
+
+    public function isClothing()
+    {
+        return $this->category === 'clothing';
     }
 }
