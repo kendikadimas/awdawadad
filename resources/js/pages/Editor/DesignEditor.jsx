@@ -416,59 +416,104 @@ const handleUploadMotif = async (file) => {
         }
     };
 
-    const handleShow3D = () => {
+    // Tambahkan state
+    const [exporting3D, setExporting3D] = useState(false);
+
+    const handleShow3D = async () => {
         if (!stageRef.current) return;
 
-        // Dapatkan layer yang berisi canvas
-        const stage = stageRef.current;
-        const layer = stage.findOne('Layer');
-        
-        if (!layer) {
-            console.error('Layer not found');
-            return;
-        }
+        try {
+            setExporting3D(true); // ✅ Show loading
 
-        // Buat stage baru temporary hanya untuk export
-        const tempStage = new window.Konva.Stage({
-            container: document.createElement('div'),
-            width: defaultSize.width,
-            height: defaultSize.height,
-        });
-
-        const tempLayer = new window.Konva.Layer();
-        tempStage.add(tempLayer);
-
-        // Clone semua objek dari layer asli ke temp layer
-        layer.getChildren().forEach((node) => {
-            // Skip transformer dan grid
-            if (node.getClassName() === 'Transformer') return;
-            if (node.getAttr('listening') === false && node.getClassName() === 'Line') return; // Skip grid lines
+            const stage = stageRef.current;
+            const layer = stage.findOne('Layer');
             
-            const clone = node.clone();
-            tempLayer.add(clone);
-        });
+            if (!layer) {
+                console.error('Layer not found');
+                return;
+            }
 
-        tempLayer.batchDraw();
+            // ✅ FIX: Tunggu semua image ter-load penuh
+            const imageNodes = layer.find('Image');
+            const imageLoadPromises = [];
 
-        // Export hanya area canvas putih
-        const patternDataURL = tempStage.toDataURL({
-            x: 0,
-            y: 0,
-            width: defaultSize.width,
-            height: defaultSize.height,
-            mimeType: 'image/png',
-            pixelRatio: 2 // Higher quality
-        });
+            imageNodes.forEach(node => {
+                const image = node.image();
+                if (image && !image.complete) {
+                    // Image belum ter-load penuh
+                    imageLoadPromises.push(
+                        new Promise((resolve) => {
+                            image.onload = () => resolve();
+                            image.onerror = () => resolve(); // Tetap resolve meskipun error
+                        })
+                    );
+                }
+            });
 
-        // Cleanup
-        tempStage.destroy();
+            // Tunggu semua image selesai load
+            if (imageLoadPromises.length > 0) {
+                console.log('⏳ Waiting for', imageLoadPromises.length, 'images to load...');
+                await Promise.all(imageLoadPromises);
+                console.log('✅ All images loaded');
+            }
 
-        console.log('=== EXPORTING PATTERN FOR 3D ===');
-        console.log('Canvas size:', defaultSize.width, 'x', defaultSize.height);
-        console.log('Pattern data URL length:', patternDataURL.length);
+            // Re-draw layer untuk memastikan semua image ter-render
+            layer.batchDraw();
 
-        setPatternFor3D(patternDataURL);
-        setShow3DModal(true);
+            // Tunggu sebentar untuk memastikan render selesai
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Buat stage baru temporary hanya untuk export
+            const tempStage = new window.Konva.Stage({
+                container: document.createElement('div'),
+                width: defaultSize.width,
+                height: defaultSize.height,
+            });
+
+            const tempLayer = new window.Konva.Layer();
+            tempStage.add(tempLayer);
+
+            // Clone semua objek dari layer asli ke temp layer
+            layer.getChildren().forEach((node) => {
+                // Skip transformer dan grid
+                if (node.getClassName() === 'Transformer') return;
+                if (node.getAttr('listening') === false && node.getClassName() === 'Line') return;
+                
+                const clone = node.clone();
+                tempLayer.add(clone);
+            });
+
+            tempLayer.batchDraw();
+
+            // ✅ Tunggu sebentar lagi untuk memastikan clone ter-render
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Export hanya area canvas putih dengan pixelRatio lebih tinggi
+            const patternDataURL = tempStage.toDataURL({
+                x: 0,
+                y: 0,
+                width: defaultSize.width,
+                height: defaultSize.height,
+                mimeType: 'image/png',
+                quality: 1,
+                pixelRatio: 2 // Higher quality
+            });
+
+            // Cleanup
+            tempStage.destroy();
+
+            console.log('=== EXPORTING PATTERN FOR 3D ===');
+            console.log('Canvas size:', defaultSize.width, 'x', defaultSize.height);
+            console.log('Pattern data URL length:', patternDataURL.length);
+
+            setPatternFor3D(patternDataURL);
+            setShow3DModal(true);
+        } catch (error) {
+            console.error('Error exporting to 3D:', error);
+            alert('Gagal export ke 3D: ' + error.message);
+        } finally {
+            setExporting3D(false); // ✅ Hide loading
+        }
     };
 
     // Fungsi untuk memperbarui properti objek dari toolbar
@@ -743,11 +788,25 @@ useEffect(() => {
                         </div>
 
                         <button 
-                            onClick={handleShow3D} 
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold shadow"
+                            onClick={handleShow3D}
+                            disabled={exporting3D}
+                            className={`px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold shadow ${
+                                exporting3D 
+                                    ? 'bg-gray-400 cursor-not-allowed' 
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                            }`}
                         >
-                            Preview 3D
-                            <ArrowRight className="w-5 h-5" />
+                            {exporting3D ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Exporting...
+                                </>
+                            ) : (
+                                <>
+                                    Preview 3D
+                                    <ArrowRight className="w-5 h-5" />
+                                </>
+                            )}
                         </button>
                         <button 
                             onClick={handleSave}
