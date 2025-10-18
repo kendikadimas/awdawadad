@@ -64,16 +64,36 @@ export default function DesignEditor({ initialDesign }) {
     // Parse canvas_data dengan benar
     const parseCanvasData = (data) => {
         if (!data) return [];
-        if (Array.isArray(data)) return data;
-        if (typeof data === 'string') {
+        
+        let parsed = [];
+        if (Array.isArray(data)) {
+            parsed = data;
+        } else if (typeof data === 'string') {
             try {
-                return JSON.parse(data);
+                parsed = JSON.parse(data);
             } catch (e) {
                 console.error('Failed to parse canvas_data:', e);
                 return [];
             }
         }
-        return [];
+
+        // ✅ FIX: Normalisasi path gambar
+        return parsed.map(obj => {
+            if (obj.imageUrl) {
+                // Jika path relatif, tambahkan /storage/
+                if (!obj.imageUrl.startsWith('/') && !obj.imageUrl.startsWith('http')) {
+                    obj.imageUrl = '/storage/' + obj.imageUrl;
+                }
+            }
+            // Support backward compatibility dengan 'src'
+            if (obj.src && !obj.imageUrl) {
+                obj.imageUrl = obj.src.startsWith('/') ? obj.src : '/storage/' + obj.src;
+            }
+            
+            console.log('📦 Loaded object:', { id: obj.id, type: obj.type, imageUrl: obj.imageUrl });
+            
+            return obj;
+        });
     };
 
     // State utama aplikasi editor - LOAD dari initialDesign

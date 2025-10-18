@@ -87,6 +87,33 @@ class DesignController extends Controller
             $design->canvas_data = json_decode($design->canvas_data, true);
         }
 
+        // ✅ FIX: Normalisasi path gambar di canvas_data
+        if (is_array($design->canvas_data)) {
+            $design->canvas_data = array_map(function ($obj) {
+                if (isset($obj['imageUrl'])) {
+                    // Jika path sudah lengkap (dimulai dengan /storage/), biarkan
+                    if (strpos($obj['imageUrl'], '/storage/') === 0) {
+                        // Sudah benar, tidak perlu diubah
+                    } 
+                    // Jika path relatif (designs/...), tambahkan /storage/
+                    elseif (strpos($obj['imageUrl'], 'designs/') === 0) {
+                        $obj['imageUrl'] = '/storage/' . $obj['imageUrl'];
+                    }
+                    // Jika full URL (http://...), biarkan
+                    elseif (strpos($obj['imageUrl'], 'http') === 0) {
+                        // Sudah benar
+                    }
+                }
+                
+                // ✅ Support backward compatibility dengan 'src'
+                if (isset($obj['src']) && !isset($obj['imageUrl'])) {
+                    $obj['imageUrl'] = $obj['src'];
+                }
+                
+                return $obj;
+            }, $design->canvas_data);
+        }
+
         // Pastikan canvas_width dan canvas_height ada
         if (!$design->canvas_width) {
             $design->canvas_width = 800;
@@ -95,11 +122,16 @@ class DesignController extends Controller
             $design->canvas_height = 600;
         }
 
+        \Log::info('🔍 Loading design for edit:', [
+            'design_id' => $design->id,
+            'canvas_data_count' => count($design->canvas_data ?? []),
+            'first_object' => $design->canvas_data[0] ?? null,
+        ]);
+
         return Inertia::render('Editor/DesignEditor', [
             'initialDesign' => [
                 'id' => $design->id,
                 'title' => $design->title,
-                // 'description' => $design->description,
                 'canvas_data' => $design->canvas_data,
                 'canvas_width' => (int) $design->canvas_width,
                 'canvas_height' => (int) $design->canvas_height,
@@ -187,17 +219,17 @@ class DesignController extends Controller
         $filename = 'designs/generated/' . Auth::id() . '_' . time() . '.jpg';
         Storage::disk('public')->put($filename, $imageData);
 
-        // ✅ FIX: Gunakan 'imageUrl' (konsisten dengan editor)
+        // ✅ FIX: Simpan path RELATIF di canvas_data (seperti motif biasa)
         $canvasData = [
             [
                 'id' => 'obj' . time(),
-                'type' => 'image', // ✅ Tambahkan type
+                'type' => 'image',
                 'x' => 100,
                 'y' => 100,
                 'width' => 600,
                 'height' => 600,
                 'rotation' => 0,
-                'imageUrl' => '/storage/' . $filename, // ✅ Gunakan 'imageUrl' (bukan 'src')
+                'imageUrl' => $filename, // ✅ UBAH: Path relatif saja (tanpa /storage/)
             ]
         ];
 
@@ -210,6 +242,11 @@ class DesignController extends Controller
             'user_id' => Auth::id(),
         ]);
  
+        \Log::info('✅ AI Design saved:', [
+            'design_id' => $design->id,
+            'imageUrl_in_canvas' => $canvasData[0]['imageUrl'],
+        ]);
+
         return redirect()->route('dashboard')->with('success', 'Desain berhasil disimpan!');
     }
 }
