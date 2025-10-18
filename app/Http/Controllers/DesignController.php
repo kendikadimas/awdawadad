@@ -74,7 +74,7 @@ class DesignController extends Controller
             'canvas_height' => $design->canvas_height,
         ]);
 
-        return redirect()->route('user.dashboard');
+        return redirect()->route('dashboard');
     }
 
     public function show($id)
@@ -153,7 +153,7 @@ class DesignController extends Controller
             'image_url' => $thumbnailPath
         ]);
 
-        return redirect()->route('user.dashboard')->with('success', 'Design berhasil diupdate!');
+        return redirect()->route('dashboard')->with('success', 'Design berhasil diupdate!');
     }
 
     public function destroy($id)
@@ -187,16 +187,17 @@ class DesignController extends Controller
         $filename = 'designs/generated/' . Auth::id() . '_' . time() . '.jpg';
         Storage::disk('public')->put($filename, $imageData);
 
-        // ✅ Buat struktur data canvas dengan path relatif (BUKAN full URL)
+        // ✅ FIX: Gunakan 'imageUrl' (konsisten dengan editor)
         $canvasData = [
             [
                 'id' => 'obj' . time(),
+                'type' => 'image', // ✅ Tambahkan type
                 'x' => 100,
                 'y' => 100,
                 'width' => 600,
                 'height' => 600,
                 'rotation' => 0,
-                'src' => '/storage/' . $filename, // ✅ Path relatif dari public
+                'imageUrl' => '/storage/' . $filename, // ✅ Gunakan 'imageUrl' (bukan 'src')
             ]
         ];
 
@@ -205,7 +206,7 @@ class DesignController extends Controller
             'canvas_data' => json_encode($canvasData),
             'canvas_width' => 800,
             'canvas_height' => 600,
-            'image_url' => $filename, // ✅ Simpan path relatif
+            'image_url' => $filename,
             'user_id' => Auth::id(),
         ]);
  

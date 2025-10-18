@@ -6,17 +6,21 @@ import { Brush, Eraser, Hand, Move } from 'lucide-react';
 // Komponen untuk render motif image
 const MotifImage = ({ shapeProps, isSelected, onSelect, onChange, trRef, activeTool }) => {
     const shapeRef = useRef();
+    
+    // ✅ FIX: Support kedua key 'imageUrl' dan 'src'
     const resolvedImage = React.useMemo(() => {
-        if (!shapeProps.imageUrl) return { src: null, crossOrigin: undefined };
+        const imageSource = shapeProps.imageUrl || shapeProps.src; // ✅ Cek kedua key
+        
+        if (!imageSource) return { src: null, crossOrigin: undefined };
 
-        const isSameOrigin = shapeProps.imageUrl.startsWith('/')
-            || shapeProps.imageUrl.startsWith(window.location.origin);
+        const isSameOrigin = imageSource.startsWith('/')
+            || imageSource.startsWith(window.location.origin);
 
         return {
-            src: shapeProps.imageUrl,
+            src: imageSource,
             crossOrigin: isSameOrigin ? undefined : 'Anonymous',
         };
-    }, [shapeProps.imageUrl]);
+    }, [shapeProps.imageUrl, shapeProps.src]); // ✅ Watch kedua key
 
     const [image] = useImage(resolvedImage.src, resolvedImage.crossOrigin);
 
