@@ -187,7 +187,7 @@ class DesignController extends Controller
         $filename = 'designs/generated/' . Auth::id() . '_' . time() . '.jpg';
         Storage::disk('public')->put($filename, $imageData);
 
-        // Buat struktur data canvas dengan gambar AI
+        // ✅ Buat struktur data canvas dengan path relatif (BUKAN full URL)
         $canvasData = [
             [
                 'id' => 'obj' . time(),
@@ -196,7 +196,7 @@ class DesignController extends Controller
                 'width' => 600,
                 'height' => 600,
                 'rotation' => 0,
-                'src' => Storage::url($filename), // ✅ Gunakan full URL untuk canvas
+                'src' => '/storage/' . $filename, // ✅ Path relatif dari public
             ]
         ];
 
@@ -205,7 +205,7 @@ class DesignController extends Controller
             'canvas_data' => json_encode($canvasData),
             'canvas_width' => 800,
             'canvas_height' => 600,
-            'image_url' => $filename, // ✅ Simpan path relatif untuk thumbnail
+            'image_url' => $filename, // ✅ Simpan path relatif
             'user_id' => Auth::id(),
         ]);
  
